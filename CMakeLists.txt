@@ -1,6 +1,6 @@
 # Set required cmake version and define project
 cmake_minimum_required(VERSION 3.15)
-project(ExampleProjectName LANGUAGES C VERSION 0.0.0)
+project(vulkanTestApp LANGUAGES C VERSION 0.0.1)
 
 # Set the C Standard Settings 
 set(CMAKE_C_STANDARD 99)
@@ -43,18 +43,42 @@ elseif(MSVC)
 endif()
 
 # Include fetch content 
-# include(FetchContent)
+include(FetchContent)
 
-# Example dependancy
-# FetchContent_Declare(
-#     example
-#     GIT_REPOSITORY https://example.com/example.git
-#     GIT_TAG        exampleTag
-# )
-# FetchContent_MakeAvailable(example)
+# Configure options for dependencies
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+set(GLFW_LIBRARY_TYPE "STATIC" CACHE STRING "" FORCE)
+set(USE_MSVC_RUNTIME_LIBRARY_DLL OFF CACHE BOOL "" FORCE)
+
+set(CGLM_SHARED OFF CACHE BOOL "" FORCE)
+set(CGLM_STATIC ON CACHE BOOL "" FORCE)
+set(CGLM_USE_C99 ON CACHE BOOL "" FORCE)
+set(CGLM_TEST OFF CACHE BOOL "" FORCE)
+
+# Declare dependencies
+FetchContent_Declare(
+    glfw
+    GIT_REPOSITORY https://github.com/glfw/glfw.git
+    GIT_TAG        b00e6a8a88ad1b60c0a045e696301deb92c9a13e
+)
+
+FetchContent_Declare(
+    cglm
+    GIT_REPOSITORY https://github.com/recp/cglm.git
+    GIT_TAG        83d5b2c97378e61a4666825fd3a5548955c83add
+)
+
+# Download dependencies
+FetchContent_MakeAvailable(glfw cglm)
+
+# Find Vulkan
+find_package(Vulkan REQUIRED)
 
 # Link dependencies to executable
-# target_link_libraries(${PROJECT_NAME} PRIVATE)
+target_link_libraries(${PROJECT_NAME} PRIVATE glfw cglm Vulkan::Vulkan)
 
 # Set the include directories
 target_include_directories(${PROJECT_NAME} PRIVATE 
