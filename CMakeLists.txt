@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.15)
 project(vulkanTestApp LANGUAGES C VERSION 0.0.1)
 
 # Set the C Standard Settings 
-set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
@@ -55,7 +55,7 @@ set(USE_MSVC_RUNTIME_LIBRARY_DLL OFF CACHE BOOL "" FORCE)
 
 set(CGLM_SHARED OFF CACHE BOOL "" FORCE)
 set(CGLM_STATIC ON CACHE BOOL "" FORCE)
-set(CGLM_USE_C99 ON CACHE BOOL "" FORCE)
+set(CGLM_USE_C99 OFF CACHE BOOL "" FORCE)
 set(CGLM_TEST OFF CACHE BOOL "" FORCE)
 
 # Declare dependencies
@@ -99,3 +99,14 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/resources" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources"
     COMMENT "Removing old resources and copying new ones for ${CMAKE_BUILD_TYPE} build..."
 )
+
+# Try to find the slang shader compiler
+find_program(SLANG_COMPILER_PATH
+    NAMES slangc
+    HINTS "$ENV{VULKAN_SDK}/bin" "$ENV{VULKAN_SDK}/Bin"
+)
+
+# Check if the slang shader compiler was found
+if(NOT SLANG_COMPILER_PATH)
+    message(FATAL_ERROR "Cannot find slangc program for compiling slang shaders")
+endif()
