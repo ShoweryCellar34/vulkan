@@ -60,6 +60,13 @@ set(CGLM_TEST OFF CACHE BOOL "" FORCE)
 
 # Declare dependencies
 FetchContent_Declare(
+    volk
+    GIT_REPOSITORY https://github.com/zeux/volk.git
+    GIT_TAG        47cddf7ed97b94118a08aacb548a411188e016cc
+)
+
+# Declare dependencies
+FetchContent_Declare(
     glfw
     GIT_REPOSITORY https://github.com/glfw/glfw.git
     GIT_TAG        b00e6a8a88ad1b60c0a045e696301deb92c9a13e
@@ -72,13 +79,10 @@ FetchContent_Declare(
 )
 
 # Download dependencies
-FetchContent_MakeAvailable(glfw cglm)
-
-# Find Vulkan
-find_package(Vulkan REQUIRED)
+FetchContent_MakeAvailable(volk glfw cglm)
 
 # Link dependencies to executable
-target_link_libraries(${PROJECT_NAME} PRIVATE glfw cglm Vulkan::Vulkan)
+target_link_libraries(${PROJECT_NAME} PRIVATE volk glfw cglm)
 
 # Set the include directories
 target_include_directories(${PROJECT_NAME} PRIVATE 
@@ -116,7 +120,7 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E echo "Copying new resources to build folder"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/resources/assets" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources/assets"
 
-    COMMAND ${CMAKE_COMMAND} -E echo "Compiling shaders"
+    COMMAND ${CMAKE_COMMAND} -E echo "Compiling shaders to build folder"
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources/shaders"
     COMMAND ${SLANG_COMPILER} ${CMAKE_CURRENT_SOURCE_DIR}/resources/shaders/test.slang -profile spirv_1_6 -o $<TARGET_FILE_DIR:${PROJECT_NAME}>/resources/shaders/test.spv
 )
