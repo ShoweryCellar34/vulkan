@@ -86,27 +86,37 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
 )
 
-# Generate a header with cmake project infomation
+# Generate a header with cmake project information
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/headers/projectData.h.in"
     "${CMAKE_CURRENT_BINARY_DIR}/generated/projectData.h"
 )
 
-# Delete old resources and copy new ones
-add_custom_command(
-    TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E remove_directory "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/resources" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources"
-    COMMENT "Removing old resources and copying new ones for ${CMAKE_BUILD_TYPE} build..."
-)
-
 # Try to find the slang shader compiler
-find_program(SLANG_COMPILER_PATH
+find_program(SLANG_COMPILER
     NAMES slangc
     HINTS "$ENV{VULKAN_SDK}/bin" "$ENV{VULKAN_SDK}/Bin"
+    NO_CACHE
 )
 
 # Check if the slang shader compiler was found
-if(NOT SLANG_COMPILER_PATH)
+if(NOT SLANG_COMPILER)
     message(FATAL_ERROR "Cannot find slangc program for compiling slang shaders")
+else()
+    message(STATUS "Found slangc for compiling shaders")
 endif()
+
+# Copy new resources and compile shaders
+add_custom_command(
+    TARGET ${PROJECT_NAME} POST_BUILD
+
+    COMMAND ${CMAKE_COMMAND} -E echo "Removing old resources from build folder"
+    COMMAND ${CMAKE_COMMAND} -E remove_directory "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources"
+
+    COMMAND ${CMAKE_COMMAND} -E echo "Copying new resources to build folder"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/resources/assets" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources/assets"
+
+    COMMAND ${CMAKE_COMMAND} -E echo "Compiling shaders"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources/shaders"
+    COMMAND ${SLANG_COMPILER} ${CMAKE_CURRENT_SOURCE_DIR}/resources/shaders/test.slang -profile spirv_1_6 -o $<TARGET_FILE_DIR:${PROJECT_NAME}>/resources/shaders/test.spv
+)
