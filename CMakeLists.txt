@@ -2,10 +2,15 @@
 cmake_minimum_required(VERSION 3.15)
 project(vulkanTestApp LANGUAGES C VERSION 0.0.1)
 
-# Set the C Standard Settings 
+# Set the C Standard Settings
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
+
+# Set the CXX Standard Settings 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Define all source files and add executable
 set(SOURCES
@@ -65,7 +70,12 @@ FetchContent_Declare(
     GIT_TAG        47cddf7ed97b94118a08aacb548a411188e016cc
 )
 
-# Declare dependencies
+FetchContent_Declare(
+    vma
+    GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
+    GIT_TAG        3aa921224c154a0d2c43912bc88e1c42ce1f7607
+)
+
 FetchContent_Declare(
     glfw
     GIT_REPOSITORY https://github.com/glfw/glfw.git
@@ -79,10 +89,10 @@ FetchContent_Declare(
 )
 
 # Download dependencies
-FetchContent_MakeAvailable(volk glfw cglm)
+FetchContent_MakeAvailable(volk vma glfw cglm)
 
 # Link dependencies to executable
-target_link_libraries(${PROJECT_NAME} PRIVATE volk glfw cglm)
+target_link_libraries(${PROJECT_NAME} PRIVATE volk VulkanMemoryAllocator glfw cglm)
 
 # Set the include directories
 target_include_directories(${PROJECT_NAME} PRIVATE 
