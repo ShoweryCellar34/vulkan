@@ -14,6 +14,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Define all source files and add executable
 set(SOURCES
+    source/cleanup.c
+    source/extensions.c
     source/main.c
 )
 add_executable(${PROJECT_NAME} ${SOURCES})
