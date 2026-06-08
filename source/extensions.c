@@ -12,12 +12,14 @@
 #include <GLFW/glfw3.h>
 
 // Project Headers
+#include <cleanup.h>
 
 static const char** extensions = NULL;
 
 void freeVulkanExtensionsArray(void) {
     if(extensions != NULL) {
         free(extensions);
+        fprintf(stdout, "Freed vulkan extensions array\n");
     }
 }
 
@@ -49,7 +51,10 @@ const char** getVulkanExtensions(uint32_t* extensionCount, bool debug) {
     fprintf(stdout, "Allocated vulkan extensions array of length %zu\n", *extensionCount * sizeof(const char*));
 
     // Add the function that frees the vulkan extensions array to the list of functions to be called when we exit
-    atexit(freeVulkanExtensionsArray);
+    pushExitCallback((cleanupCallback){
+        .callback     = freeVulkanExtensionsArray,
+        .callbackData = NULL
+    });
 
     // Copy glfw vulkan extensions to joined array and maybe add debug extension to the end
     memcpy(extensions, glfwExtensions, sizeof(const char*) * glfwExtensionCount);
@@ -79,10 +84,13 @@ const char** getVulkanExtensions(uint32_t* extensionCount, bool debug) {
         fprintf(stderr, "Failed to allocate supported vulkan extensions array of length %zu\n", supportedExtensionCount * sizeof(const char*));
         exit(EXIT_FAILURE);
     }
+    pushExitCallback((cleanupCallback){
+        .callback     = free,
+        .callbackData = supportedExtensions
+    });
     result = vkEnumerateInstanceExtensionProperties(NULL, (uint32_t*)&supportedExtensionCount, supportedExtensions);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to get number of supported vulkan extensions: %i\n", result);
-        free(supportedExtensions);
         exit(EXIT_FAILURE);
     }
     fprintf(stdout, "Got array of extensions supported by vulkan\n");
@@ -96,7 +104,8 @@ const char** getVulkanExtensions(uint32_t* extensionCount, bool debug) {
             }
         }
     }
-    free(supportedExtensions);
+    cleanupCallback callback = popExitCallback();
+    callback.callback(callback.callbackData);
     if(extensionsSupported != *extensionCount) {
         fprintf(stderr, "Not all requested vulkan extensions are supported\n");
         exit(EXIT_FAILURE);

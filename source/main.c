@@ -21,7 +21,7 @@
 #define NULLFREE(x)    free(x); x = NULL
 
 void testCallback(void* data) {
-    fprintf(stdout, "Test callback!");
+    fprintf(stdout, (const char*)data);
 }
 
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)  {
@@ -55,6 +55,9 @@ int main(int argc, char* argv[]) {
     (_  |_  | | | |_) 
     __) |_  | |_| |   
     */
+
+    // Setup the exit callbacks stack for cleaning up resources upon exit
+    setupExitCallbacks();
 
     // initialize GLFW
     if(glfwInit() != GLFW_TRUE) {
@@ -105,77 +108,7 @@ int main(int argc, char* argv[]) {
      \/  |_| |_ |\ /--\ | \|   |_ /\ | |_ | \| __) _|_ \_/ | \| __) 
     */
 
-    // // Get the array of vulkan extensions requested by GLFW
-    // const uint32_t glfwExtensionCount = 0;
-    // const char** glfwExtensions = glfwGetRequiredInstanceExtensions((uint32_t*)&glfwExtensionCount);
-    // if(glfwExtensions == NULL) {
-    //     fprintf(stderr, "Failed to get required vulkan extensions for GLFW\n");
-    //     return EXIT_FAILURE;
-    // }
-    // fprintf(stdout, "Got array of vulkan extensions requested by GLFW\n");
-
-    // // list the vulkan extension we will use
-    // const char* userExtensions[] = {
-    //     VK_EXT_DEBUG_UTILS_EXTENSION_NAME
-    // };
-    // const uint32_t userExtensionCount = ARRAY_COUNT(userExtensions);
-
-    // // Allocate memory for an array to store both glfw and user vulkan extensions
-    // const uint32_t extensionCount = glfwExtensionCount + userExtensionCount;
-    // const char** extensions = malloc(extensionCount * sizeof(const char*));
-    // if(extensions == NULL) {
-    //     fprintf(stderr, "Failed to allocate required vulkan extension array of length %zu\n", extensionCount * sizeof(const char*));
-    //     return EXIT_FAILURE;
-    // }
-
-    // // Copy glfw and user vulkan extensions to joined array
-    // memcpy(extensions, glfwExtensions, sizeof(const char*) * glfwExtensionCount);
-    // memcpy(&extensions[glfwExtensionCount], &userExtensions, sizeof(const char*) * userExtensionCount);
-    // fprintf(stdout, "Created concatenated array of all requested vulkan extensions\n");
-
-    // // Get the length of the array of supported vulkan extensions
-    // const uint32_t supportedExtensionCount = 0;
-    // result = vkEnumerateInstanceExtensionProperties(NULL, (uint32_t*)&supportedExtensionCount, NULL);
-    // if(result != VK_SUCCESS) {
-    //     fprintf(stderr, "Failed to get number of supported vulkan extensions: %i\n", result);
-    //     return EXIT_FAILURE;
-    // }
-
-    // // Ensure that there is at least one vulkan extension supported before continuing
-    // if(extensionCount < 1) {
-    //     fprintf(stderr, "There must be at least one vulkan extension supported to continue\n");
-    //     return EXIT_FAILURE;
-    // }
-
-    // // Fill an array with the list of supported vulkan extensions
-    // VkExtensionProperties* supportedExtensions = malloc(sizeof(VkExtensionProperties) * supportedExtensionCount);
-    // if(supportedExtensions == NULL) {
-    //     fprintf(stderr, "Failed to allocate supported vulkan extensions array of length %zu\n", supportedExtensionCount * sizeof(const char*));
-    //     return EXIT_FAILURE;
-    // }
-    // result = vkEnumerateInstanceExtensionProperties(NULL, (uint32_t*)&supportedExtensionCount, supportedExtensions);
-    // if(result != VK_SUCCESS) {
-    //     fprintf(stderr, "Failed to get number of supported vulkan extensions: %i\n", result);
-    //     return EXIT_FAILURE;
-    // }
-    // fprintf(stdout, "Got array of extensions supported by vulkan\n");
-
-    // // Check if the requested vulkan extensions are supported
-    // uint32_t extensionsSupported = 0;
-    // for(uint32_t i = 0; i < supportedExtensionCount; i++) {
-    //     for(uint32_t j = 0; j < extensionCount; j++) {
-    //         if(!strcmp(supportedExtensions[i].extensionName, extensions[j])) {
-    //             extensionsSupported++;
-    //         }
-    //     }
-    // }
-    // NULLFREE(supportedExtensions);
-    // if(extensionsSupported != extensionCount) {
-    //     fprintf(stderr, "Not all requested vulkan extensions are supported\n");
-    //     return EXIT_FAILURE;
-    // }
-    // fprintf(stdout, "All requested vulkan extensions are supported\n");
-
+    // Get the vulkan extensions array
     uint32_t extensionCount = 0;
     const char** extensions = getVulkanExtensions(&extensionCount, true);
 
@@ -338,16 +271,6 @@ int main(int argc, char* argv[]) {
     // Cleanup GLFW
     glfwDestroyWindow(window);
     glfwTerminate();
-
-    exitCallback callback = {
-        .callback     = testCallback,
-        .callbackData = NULL
-    };
-    pushExitCallback(callback);
-    pushExitCallback(callback);
-    pushExitCallback(callback);
-    pushExitCallback(callback);
-    pushExitCallback(callback);
 
     // Exit with success
     return EXIT_SUCCESS;
