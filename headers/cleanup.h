@@ -8,12 +8,15 @@ typedef struct cleanupCallback {
 } cleanupCallback;
 
 // Sets up the callback stack so the callbacks will be called when exiting, this is in first in, last out order
-void setupExitCallbacks();
+void startCleanupCallbacks(void);
 
 // Add a callback to the top of the stack
-void pushExitCallback(cleanupCallback callback);
+void pushCleanupCallback(cleanupCallback callback);
 
 // Remove a callback from the top of the stack and return its infomation
-cleanupCallback popExitCallback();
+cleanupCallback popCleanupCallback();
+
+// Remove a callback from the top of the stack and return its infomation and call it with the data pointer provided during pushing
+cleanupCallback popAndCallCleanupCallback();
 
 #endif // CLEANUP_H

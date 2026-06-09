@@ -14,23 +14,15 @@
 // Project Headers
 #include <cleanup.h>
 
-static const char** extensions = NULL;
-
-void freeVulkanExtensionsArray(void) {
-    if(extensions != NULL) {
-        free(extensions);
-        fprintf(stdout, "Freed vulkan extensions array\n");
-    }
-}
-
 const char** getVulkanExtensions(uint32_t* extensionCount, bool debug) {
+    // Declare the variable to store the vulkan extensions array
+    static const char** extensions = NULL;
+
+    // If we have already allocated the vulkan extensions array we free it so we can allocate a new one later
     if(extensions != NULL) {
         free(extensions);
         extensions = NULL;
     }
-
-    // Create a variable to store the result of vulkan functions for error checking and reporting
-    VkResult result = VK_SUCCESS;
 
     // Get the array of vulkan extensions requested by GLFW
     const uint32_t glfwExtensionCount = 0;
@@ -48,12 +40,12 @@ const char** getVulkanExtensions(uint32_t* extensionCount, bool debug) {
         fprintf(stderr, "Failed to allocate vulkan extensions array of length %zu\n", *extensionCount * sizeof(const char*));
         exit(EXIT_FAILURE);
     }
-    fprintf(stdout, "Allocated vulkan extensions array of length %zu\n", *extensionCount * sizeof(const char*));
+    fprintf(stdout, "Allocated vulkan extensions array of size %zu\n", *extensionCount * sizeof(const char*));
 
     // Add the function that frees the vulkan extensions array to the list of functions to be called when we exit
-    pushExitCallback((cleanupCallback){
-        .callback     = freeVulkanExtensionsArray,
-        .callbackData = NULL
+    pushCleanupCallback((cleanupCallback){
+        .callback     = free,
+        .callbackData = extensions
     });
 
     // Copy glfw vulkan extensions to joined array and maybe add debug extension to the end
@@ -64,6 +56,19 @@ const char** getVulkanExtensions(uint32_t* extensionCount, bool debug) {
         fprintf(stdout, "Appended vulkan debug extensions to vulkan extensions array\n");
     }
 
+    // Return the list of extensions 
+    return extensions;
+}
+
+bool validateVulkanExtensions(const char** extensions, uint32_t extensionCount) {
+    // If we try to validate no extensions we return true, indicating that there were no unsupported requested extensions
+    if(extensionCount == 0) {
+        return true;
+    }
+
+    // Create a variable to store the result of vulkan functions for error checking and reporting
+    VkResult result = VK_SUCCESS;
+
     // Get the length of the supported vulkan extensions array
     const uint32_t supportedExtensionCount = 0;
     result = vkEnumerateInstanceExtensionProperties(NULL, (uint32_t*)&supportedExtensionCount, NULL);
@@ -73,21 +78,25 @@ const char** getVulkanExtensions(uint32_t* extensionCount, bool debug) {
     }
 
     // Ensure that there is at least one vulkan extension supported before continuing
-    if(supportedExtensionCount < *extensionCount) {
+    if(supportedExtensionCount < extensionCount) {
         fprintf(stderr, "Less vulkan extensions supported than number of vulkan extensions requested\n");
+        return false;
+    }
+
+    // Allocate the supported vulkan extensions array
+    VkExtensionProperties* supportedExtensions = malloc(sizeof(VkExtensionProperties) * supportedExtensionCount);
+    if(supportedExtensions == NULL) {
+        fprintf(stderr, "Failed to allocate supported vulkan extensions array of size %zu\n", supportedExtensionCount * sizeof(const char*));
         exit(EXIT_FAILURE);
     }
 
-    // Fill an array with the list of supported vulkan extensions
-    VkExtensionProperties* supportedExtensions = malloc(sizeof(VkExtensionProperties) * supportedExtensionCount);
-    if(supportedExtensions == NULL) {
-        fprintf(stderr, "Failed to allocate supported vulkan extensions array of length %zu\n", supportedExtensionCount * sizeof(const char*));
-        exit(EXIT_FAILURE);
-    }
-    pushExitCallback((cleanupCallback){
+    // Temporarily add a callback that frees the supported extensions array when we exit, this will be popped from the stack when we finish with the array
+    pushCleanupCallback((cleanupCallback){
         .callback     = free,
-        .callbackData = supportedExtensions
+        .callbackData = (void*)supportedExtensions
     });
+
+    // Fill the supported vulkan extensions array with the list of supported vulkan extensions
     result = vkEnumerateInstanceExtensionProperties(NULL, (uint32_t*)&supportedExtensionCount, supportedExtensions);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to get number of supported vulkan extensions: %i\n", result);
@@ -95,22 +104,23 @@ const char** getVulkanExtensions(uint32_t* extensionCount, bool debug) {
     }
     fprintf(stdout, "Got array of extensions supported by vulkan\n");
 
-    // Check if the requested vulkan extensions are supported
+    // Count how many vulkan extensions we requested are supported
     uint32_t extensionsSupported = 0;
     for(uint32_t i = 0; i < supportedExtensionCount; i++) {
-        for(uint32_t j = 0; j < *extensionCount; j++) {
+        for(uint32_t j = 0; j < extensionCount; j++) {
             if(!strcmp(supportedExtensions[i].extensionName, extensions[j])) {
                 extensionsSupported++;
             }
         }
     }
-    cleanupCallback callback = popExitCallback();
-    callback.callback(callback.callbackData);
-    if(extensionsSupported != *extensionCount) {
-        fprintf(stderr, "Not all requested vulkan extensions are supported\n");
-        exit(EXIT_FAILURE);
-    }
-    fprintf(stdout, "All requested vulkan extensions are supported\n");
 
-    return extensions;
+    // Pop the callback to free the supported vulkan extensions array and call it, this is because we no longer need the array and can free it now
+    popAndCallCleanupCallback();
+
+    // Check if the number of vulkan extensions we requested that are supported is equal to the number of requested vulkan extensions
+    if(extensionsSupported != extensionCount) {
+        return false;
+    }
+
+    return true;
 }

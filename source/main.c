@@ -12,6 +12,7 @@
 // Project Headers
 #include <cleanup.h>
 #include <extensions.h>
+#include <layers.h>
 #include <projectData.h>
 
 #define WINDOW_WIDTH  800
@@ -57,7 +58,7 @@ int main(int argc, char* argv[]) {
     */
 
     // Setup the exit callbacks stack for cleaning up resources upon exit
-    setupExitCallbacks();
+    atexit(startCleanupCallbacks);
 
     // initialize GLFW
     if(glfwInit() != GLFW_TRUE) {
@@ -103,19 +104,21 @@ int main(int argc, char* argv[]) {
     }
     fprintf(stdout, "Loaded vulkan using volk\n");
 
-    /*                          _   ___ _       __ ___  _        __ 
-    \  / | | |  |/  /\  |\ |   |_ \/ | |_ |\ | (_   |  / \ |\ | (_  
-     \/  |_| |_ |\ /--\ | \|   |_ /\ | |_ | \| __) _|_ \_/ | \| __) 
-    */
-
     // Get the vulkan extensions array
     uint32_t extensionCount = 0;
     const char** extensions = getVulkanExtensions(&extensionCount, true);
 
-    /*                                     _  _   __ 
-    \  / | | |  |/  /\  |\ |   |   /\ \_/ |_ |_) (_  
-     \/  |_| |_ |\ /--\ | \|   |_ /--\ |  |_ | \ __) 
-    */
+    // Validate the presence of our desired vulkan extensions in vulkan
+    if(validateVulkanExtensions(extensions, extensionCount) == false) {
+        fprintf(stderr, "Not all requested vulkan extensions are supported\n");
+        exit(EXIT_FAILURE);
+    }
+    fprintf(stdout, "All requested vulkan extensions are supported:\n");
+
+    // Print all the vulkan extensions we will use
+    for(uint32_t i = 0; i < extensionCount; i++) {
+        fprintf(stdout, "    %s\n", extensions[i]);
+    }
 
     // Create the array of vulkan layers we will use
     const char* layers[] = {
@@ -123,48 +126,17 @@ int main(int argc, char* argv[]) {
     };
     const uint32_t layerCount = ARRAY_COUNT(layers);
 
-    // Get the length of the array of supported vulkan layers
-    const uint32_t supportedLayerCount = 0;
-    result = vkEnumerateInstanceLayerProperties((uint32_t*)&supportedLayerCount, NULL);
-    if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to get number of supported vulkan layers: %i\n", result);
-        return EXIT_FAILURE;
-    }
-
-    // Ensure that there is at least one vulkan layer before continuing
-    if(layerCount < 1) {
-        fprintf(stderr, "There must be at least one vulkan layer to continue\n");
-        return EXIT_FAILURE;
-    }
-
-    // Fill an array with the list of supported vulkan layers
-    VkLayerProperties* supportedLayers = malloc(sizeof(VkLayerProperties) * supportedLayerCount);
-    if(supportedLayers == NULL) {
-        fprintf(stderr, "Failed to allocate supported vulkan layers array of length %" PRIu32 "\n", supportedLayerCount);
-        return EXIT_FAILURE;
-    }
-    result = vkEnumerateInstanceLayerProperties((uint32_t*)&supportedLayerCount, supportedLayers);
-    if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to get number of supported vulkan layers: %i\n", result);
-        return EXIT_FAILURE;
-    }
-    fprintf(stdout, "Got array of layers supported by vulkan\n");
-
-    // Check if the requested vulkan layers are supported
-    uint32_t layersSupported = 0;
-    for(uint32_t i = 0; i < supportedLayerCount; i++) {
-        for(uint32_t j = 0; j < layerCount; j++) {
-            if(!strcmp(supportedLayers[i].layerName, layers[j])) {
-                layersSupported++;
-            }
-        }
-    }
-    NULLFREE(supportedLayers);
-    if(layersSupported != layerCount) {
+    // Validate the presence of our desired vulkan layers in vulkan
+    if(validateVulkanLayers(layers, layerCount) == false) {
         fprintf(stderr, "Not all requested vulkan layers are supported\n");
-        return EXIT_FAILURE;
+        exit(EXIT_FAILURE);
     }
-    fprintf(stdout, "All requested vulkan layers are supported\n");
+    fprintf(stdout, "All requested vulkan layers are supported:\n");
+
+    // Print all the vulkan layers we will use
+    for(uint32_t i = 0; i < layerCount; i++) {
+        fprintf(stdout, "    %s\n", layers[i]);
+    }
 
     /*                         ___       __ ___           _  _ 
     \  / | | |  |/  /\  |\ |    |  |\ | (_   |  /\  |\ | /  |_ 
@@ -254,6 +226,8 @@ int main(int argc, char* argv[]) {
     for(uint32_t i = 0; i < physicalDeviceCount; i++) {
         VkPhysicalDeviceProperties physicalDeviceProperties;
         vkGetPhysicalDeviceProperties(physicalDevices[i], &physicalDeviceProperties);
+        VkPhysicalDeviceFeatures physicalDeviceFeatures;
+        vkGetPhysicalDeviceFeatures(physicalDevices[i], &physicalDeviceFeatures);
 
         fprintf(stdout, "%s\n", physicalDeviceProperties.deviceName);
     }
