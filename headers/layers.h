@@ -7,10 +7,11 @@
 #include <stdint.h>
 
 // Library Headers
+#include <volk.h>
 
 // Project Headers
 
-// Validate the presence of an array of vulkan layers in vulkan
-bool validateVulkanLayers(const char** layers, uint32_t layerCount);
+// Get the list of layers supported by vulkan
+VkLayerProperties* getSupportedVulkanLayers(uint32_t* layerCount);
 
 #endif // LAYERS_H

@@ -15,6 +15,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Define all source files and add executable
 set(SOURCES
     source/cleanup.c
+    source/devices.c
     source/extensions.c
     source/layers.c
     source/main.c
@@ -49,6 +50,8 @@ elseif(MSVC)
 
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE DEBUG_BUILD=$<CONFIG:Debug>)
 
 # Include fetch content 
 include(FetchContent)

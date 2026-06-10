@@ -11,6 +11,7 @@
 
 // Project Headers
 #include <cleanup.h>
+#include <devices.h>
 #include <extensions.h>
 #include <layers.h>
 #include <projectData.h>
@@ -104,16 +105,38 @@ int main(int argc, char* argv[]) {
     }
     fprintf(stdout, "Loaded vulkan using volk\n");
 
-    // Get the vulkan extensions array
+    // Get the vulkan extensions array and register its cleanup method
     uint32_t extensionCount = 0;
-    const char** extensions = getVulkanExtensions(&extensionCount, true);
+    const char** extensions = getVulkanExtensions(&extensionCount, DEBUG_BUILD);
+    pushCleanupCallback((cleanupCallback){
+        .callback     = free,
+        .callbackData = extensions
+    });
+    fprintf(stdout, "Successfully got list of required vulkan extensions\n");
 
-    // Validate the presence of our desired vulkan extensions in vulkan
-    if(validateVulkanExtensions(extensions, extensionCount) == false) {
+    // Get the supported vulkan extensions array and register its cleanup method
+    uint32_t supportedExtensionCount = 0;
+    VkExtensionProperties* supportedExtensions = getSupportedVulkanExtensions(&supportedExtensionCount);
+    pushCleanupCallback((cleanupCallback){
+        .callback     = free,
+        .callbackData = (void*)supportedExtensions
+    });
+    fprintf(stdout, "Successfully got list of supported vulkan extensions\n");
+
+    // Ensure all requested vulkan extensions are supported
+    uint32_t extensionsSupported = 0;
+    for(uint32_t i = 0; i < supportedExtensionCount; i++) {
+        for(uint32_t j = 0; j < extensionCount; j++) {
+            if(!strcmp(supportedExtensions[i].extensionName, extensions[j])) {
+                extensionsSupported++;
+            }
+        }
+    }
+    if(extensionsSupported != extensionCount) {
         fprintf(stderr, "Not all requested vulkan extensions are supported\n");
         exit(EXIT_FAILURE);
     }
-    fprintf(stdout, "All requested vulkan extensions are supported:\n");
+    fprintf(stdout, "All required vulkan extensions are supported:\n");
 
     // Print all the vulkan extensions we will use
     for(uint32_t i = 0; i < extensionCount; i++) {
@@ -121,17 +144,39 @@ int main(int argc, char* argv[]) {
     }
 
     // Create the array of vulkan layers we will use
-    const char* layers[] = {
-        "VK_LAYER_KHRONOS_validation"
-    };
-    const uint32_t layerCount = ARRAY_COUNT(layers);
+    #if DEBUG_BUILD == 1
+        const char* layers[] = {
+            "VK_LAYER_KHRONOS_validation"
+        };
+        const uint32_t layerCount = ARRAY_COUNT(layers);
+    #else
+        const char* layers[1] = {NULL};
+        const uint32_t layerCount = 0;
+    #endif
 
-    // Validate the presence of our desired vulkan layers in vulkan
-    if(validateVulkanLayers(layers, layerCount) == false) {
+    // Get the supported vulkan layers array and register its cleanup method
+    uint32_t supportedLayerCount = 0;
+    VkLayerProperties* supportedLayers = getSupportedVulkanLayers(&supportedLayerCount);
+    pushCleanupCallback((cleanupCallback){
+        .callback     = free,
+        .callbackData = (void*)supportedLayers
+    });
+    fprintf(stdout, "Successfully got list of supported vulkan layers\n");
+
+    // Ensure all requested vulkan layers are supported
+    uint32_t layersSupported = 0;
+    for(uint32_t i = 0; i < supportedLayerCount; i++) {
+        for(uint32_t j = 0; j < layerCount; j++) {
+            if(!strcmp(supportedLayers[i].layerName, layers[j])) {
+                layersSupported++;
+            }
+        }
+    }
+    if(layersSupported != layerCount) {
         fprintf(stderr, "Not all requested vulkan layers are supported\n");
         exit(EXIT_FAILURE);
     }
-    fprintf(stdout, "All requested vulkan layers are supported:\n");
+    fprintf(stdout, "All required vulkan layers are supported:\n");
 
     // Print all the vulkan layers we will use
     for(uint32_t i = 0; i < layerCount; i++) {
@@ -188,49 +233,47 @@ int main(int argc, char* argv[]) {
     // Load the vulkan library and instance-level vulkan functions
     volkLoadInstance(instance);
 
-    VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
-    result = vkCreateDebugUtilsMessengerEXT(instance, &debugInfo, NULL, &debugMessenger);
-    if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to set vulkan debug callback: %i\n", result);
-        return EXIT_FAILURE;
-    }
-    fprintf(stdout, "Added vulkan debug callback\n");
+    #if DEBUG_BUILD == 1
+        VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
+        result = vkCreateDebugUtilsMessengerEXT(instance, &debugInfo, NULL, &debugMessenger);
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Failed to set vulkan debug callback: %i\n", result);
+            return EXIT_FAILURE;
+        }
+        fprintf(stdout, "Added vulkan debug callback\n");
+    #endif
 
-    // Get the length of the array of vulkan physical devices
+    // Get the physical devices array and register its cleanup method
     uint32_t physicalDeviceCount = 0;
-    result = vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, NULL);
-    if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to get number of vulkan physical devices: %i\n", result);
-        return EXIT_FAILURE;
+    VkPhysicalDevice* physicalDevices = getVulkanPhysicalDevices(instance, &physicalDeviceCount);
+    pushCleanupCallback((cleanupCallback){
+        .callback     = free,
+        .callbackData = (void*)physicalDevices
+    });
+    // Ensure there is atleast one vulkan physical device before continuing
+    if(physicalDeviceCount == 0) {
+        fprintf(stdout, "No vulkan physical devices supported\n");
+        exit(EXIT_FAILURE);
     }
+    fprintf(stdout, "Successfully got list of vulkan physical devices:\n");
 
-    // Ensure that there is at least one vulkan physical device before continuing
-    if(physicalDeviceCount < 1) {
-        fprintf(stderr, "There must be at least one vulkan physical device to continue\n");
-        return EXIT_FAILURE;
-    }
-
-    // Fill an array with the list of supported vulkan extensions
-    VkPhysicalDevice* physicalDevices = malloc(physicalDeviceCount * sizeof(VkPhysicalDevice));
-    if(physicalDevices == NULL) {
-        fprintf(stderr, "Failed to allocate vulkan physical devices array of length %zu\n", physicalDeviceCount * sizeof(VkPhysicalDevice));
-        return EXIT_FAILURE;
-    }
-    result = vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices);
-    if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to get number of vulkan physical devices: %i\n", result);
-        return EXIT_FAILURE;
-    }
-    fprintf(stdout, "Got array of vulkan physical devices\n");
-
+    // Print all the vulkan physical devices and choose one
+    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     for(uint32_t i = 0; i < physicalDeviceCount; i++) {
         VkPhysicalDeviceProperties physicalDeviceProperties;
         vkGetPhysicalDeviceProperties(physicalDevices[i], &physicalDeviceProperties);
         VkPhysicalDeviceFeatures physicalDeviceFeatures;
         vkGetPhysicalDeviceFeatures(physicalDevices[i], &physicalDeviceFeatures);
 
-        fprintf(stdout, "%s\n", physicalDeviceProperties.deviceName);
+        fprintf(stdout, "    %s\n", physicalDeviceProperties.deviceName);
     }
+
+    // Print the vulkan physical device we will use
+    VkPhysicalDeviceProperties physicalDeviceProperties;
+    vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
+    VkPhysicalDeviceFeatures physicalDeviceFeatures;
+    vkGetPhysicalDeviceFeatures(physicalDevice, &physicalDeviceFeatures);
+    fprintf(stdout, "Using vulkan physical device:\n    Name:        %s\n    API Version: %" PRIu32 ".%" PRIu32 ".%" PRIu32 "\n", physicalDeviceProperties.deviceName, VK_VERSION_MAJOR(physicalDeviceProperties.apiVersion), VK_VERSION_MINOR(physicalDeviceProperties.apiVersion), VK_VERSION_PATCH(physicalDeviceProperties.apiVersion));
 
     // Main application loop
     while(!glfwWindowShouldClose(window)) {
@@ -238,7 +281,9 @@ int main(int argc, char* argv[]) {
     }
 
     // Cleanup vulkan
-    vkDestroyDebugUtilsMessengerEXT(instance, debugMessenger, NULL);
+    #if DEBUG_BUILD == 1
+        vkDestroyDebugUtilsMessengerEXT(instance, debugMessenger, NULL);
+    #endif
     vkDestroyInstance(instance, NULL);
     volkFinalize();
 
