@@ -42,6 +42,22 @@ VkPhysicalDevice* getVulkanPhysicalDevices(VkInstance instance, uint32_t* physic
     return physicalDevices;
 }
 
-bool isVulkanPhysicalDeviceSuitable(VkInstance instance, VkPhysicalDevice physicalDevice) {
-    return false;
+VkQueueFamilyProperties* getVulkanPhysicalDeviceQueueFamilies(VkPhysicalDevice physicalDevice, uint32_t* queueFamilyCount) {
+    // Get the length of the supported vulkan queue families array
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, queueFamilyCount, NULL);
+    if(*queueFamilyCount == 0) {
+        return NULL;
+    }
+
+    // Allocate the supported vulkan physical devices array
+    VkQueueFamilyProperties* queueFamilies = malloc(sizeof(VkQueueFamilyProperties) * *queueFamilyCount);
+    if(queueFamilies == NULL) {
+        fprintf(stderr, "Failed to allocate supported vulkan queue families array of size %zu\n", *queueFamilyCount * sizeof(VkQueueFamilyProperties));
+        exit(EXIT_FAILURE);
+    }
+
+    // Fill the supported vulkan queue families array with the list of supported vulkan queue families for the vulkan physical device
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, queueFamilyCount, queueFamilies);
+
+    return queueFamilies;
 }

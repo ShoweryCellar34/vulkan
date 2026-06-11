@@ -11,7 +11,7 @@ typedef struct cleanupCallback {
 void startCleanupCallbacks(void);
 
 // Add a callback to the top of the stack
-void pushCleanupCallback(cleanupCallback callback);
+void pushCleanupCallback(void (*callback)(void*), void* callbackData);
 
 // Remove a callback from the top of the stack and return its infomation
 cleanupCallback popCleanupCallback();

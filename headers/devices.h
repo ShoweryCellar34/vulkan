@@ -13,7 +13,7 @@
 // Get the list of physical devices supported by vulkan
 VkPhysicalDevice* getVulkanPhysicalDevices(VkInstance instance, uint32_t* physicalDeviceCount);
 
-// Check if a vulkan physical device is suitable for usage
-bool isVulkanPhysicalDeviceSuitable(VkInstance instance, VkPhysicalDevice physicalDevice);
+// Get the list of queue families supported by a vulkan physical device
+VkQueueFamilyProperties* getVulkanPhysicalDeviceQueueFamilies(VkPhysicalDevice physicalDevice, uint32_t* queueFamilyCount);
 
 #endif // DEVICES_H

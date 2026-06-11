@@ -9,92 +9,59 @@
 
 // Project Headers
 
-static cleanupCallback* callbackStack = NULL;
-static size_t callbackStackSize       = 0;
-static size_t callbackStackIterator   = 0;
+typedef struct cleanupCallbackNode {
+    void (*cleanupCallbackWrapper)(void*);
+    void* cleanupCallbackArgs;
+    struct cleanupCallbackNode* next;
+} cleanupCallbackNode;
+
+static cleanupCallbackNode* callbackStackHead = NULL;
 
 // This function will be registered with atExit() and pops callbacks one-by-one off the top of the stack and calls them with the data pointer provided during pushing
 void startCleanupCallbacks(void) {
-    while(callbackStackIterator > 0) {
-        cleanupCallback callback = popCleanupCallback();
-        callback.callback(callback.callbackData);
+    while(callbackStackHead != NULL) {
+        cleanupCallbackNode* callbackNode = callbackStackHead;
+        callbackStackHead = callbackNode->next;
+        callbackNode->callback(callbackNode->callbackData);
+        fprintf(stdout, "Executed cleanup callback 0x%p with data 0x%p\n", callbackNode->callback, callbackNode->callbackData);
+        free(callbackNode);
     }
 }
 
 // Adds a callback to the stack to be run at cleanup
-void pushCleanupCallback(cleanupCallback callback) {
-    // If we have not allocated the callback stack we allocate it, or if we have allocated it already, we reallocate it
-    if(callbackStack == NULL) {
-        // Define a starting size for our stack
-        size_t callbackStackStartingSize = 8;
-        // Allocate the callback stack
-        callbackStack = malloc(sizeof(cleanupCallback) * callbackStackStartingSize);
-        // Check if the allocation was successful
-        if(callbackStack == NULL) {
-            // If the allocation failed we print a message and call the callback requested to be push to the stack as to not miss any cleanup code
-            fprintf(stdout, "Failed to allocate callback array of length %zu\n", callbackStackSize);
-            callback.callback(callback.callbackData);
-            exit(EXIT_FAILURE);
-        }
-        // If we succeed we add the callback to the stack and increment the iterator to set it to the next stack callback index
-        callbackStackSize = callbackStackStartingSize;
-        callbackStack[callbackStackIterator++] = callback;
-    } else {
-        // Add the callback to the stack and increment the iterator to set it to the next stack callback index
-        callbackStack[callbackStackIterator++] = callback;
-        // If the stack if full we grow the callback stack
-        if(callbackStackIterator == callbackStackSize) {
-            // Set the new callback stack size to 1.5 times what it was before
-            size_t newCallbackStackSize = (size_t)((float)callbackStackSize * 1.5f);
-            // Reallocate the callback stack to the new size
-            cleanupCallback* newCallbackStack = realloc(callbackStack, sizeof(cleanupCallback) * newCallbackStackSize);
-            // If the reallocation failed we exit
-            if(newCallbackStack == NULL) {
-                fprintf(stdout, "Failed to reallocate callback array to length %zu from original length %zu\n", newCallbackStackSize, callbackStackSize);
-                exit(EXIT_FAILURE);
-            }
-            // If the reallocation succeeded we set the callback stack and size to the new values
-            callbackStackSize = newCallbackStackSize;
-            callbackStack = newCallbackStack;
-        }
+void pushCleanupCallback(void (*cleanupCallbackWrapper)(void*), void* cleanupCallbackArgs) {
+    cleanupCallbackNode* newCallbackStackHead = malloc(sizeof(cleanupCallbackNode));
+    if(newCallbackStackHead == NULL) {
+        fprintf(stdout, "Failed to allocate new cleanup callback node\n");
+        callback(callbackData);
+        exit(EXIT_FAILURE);
     }
+
+    // Set new cleanup callback node data
+    newCallbackStackHead->cleanupCallbackWrapper = cleanupCallbackWrapper;
+    newCallbackStackHead->cleanupCallbackArgs = cleanupCallbackArgs;
+
+    // Push cleanup callback to stack
+    callbackStackHead->next = callbackStackHead;
+    callbackStackHead = newCallbackStackHead;
 }
 
-// Remove and return the top callback on the stack
+// Remove and return the top callback on the stack or if the stack is empty return a NULL callback
 cleanupCallback popCleanupCallback() {
-    // If there are no callbacks in the callback stack we return a NULL callback
-    if(callbackStackIterator == 0) {
+    if(callbackStackHead != NULL) {
+        cleanupCallbackNode* callbackNode = callbackStackHead;
+        callbackStackHead = callbackNode->next;
+        free(callbackNode);
         return (cleanupCallback){
-            .callback =     NULL,
+            .callback = callbackNode->callback,
+            .callbackData = callbackNode->callbackData
+        };
+    } else {
+        return (cleanupCallback){
+            .callback = NULL,
             .callbackData = NULL
         };
     }
-    // Decrement the callback stack iterator
-    callbackStackIterator--;
-    // Set the new callback stack size to 0.67 times what it was before
-    size_t newCallbackStackSize = (size_t)((float)callbackStackSize * 0.67f);
-    // If the callback stack iterator is smaller than or equal to the new callback stack size then we shrink the callback stack
-    if(callbackStackIterator <= newCallbackStackSize) {
-        // If the new callback stack size is zero than we destroy the callback stack if it is greater than zero than we shrink the callback stack
-        cleanupCallback* newCallbackStack = NULL;
-        if(newCallbackStackSize > 0) {
-            newCallbackStack = realloc(callbackStack, sizeof(cleanupCallback) * newCallbackStackSize);
-            // If shrinking the callback stack failed than we exit and call the callback we popped as to not miss any cleanup functionality
-            if(newCallbackStack == NULL) {
-                fprintf(stdout, "Failed to reallocate callback array to length %zu from original length %zu\n", newCallbackStackSize, callbackStackSize);
-                callbackStack[callbackStackIterator].callback(callbackStack[callbackStackIterator].callbackData);
-                exit(EXIT_FAILURE);
-            }
-        } else {
-            free(callbackStack);
-            newCallbackStack = NULL;
-        }
-        // If we succeed then we set the callback stack and size to the new values
-        callbackStackSize = newCallbackStackSize;
-        callbackStack = newCallbackStack;
-    }
-    // Finally we return the callback we popped
-    return callbackStack[callbackStackIterator];
 }
 
 // Remove and return the top callback on the stack and call it with the data pointer provided during pushing

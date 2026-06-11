@@ -23,7 +23,6 @@ const char** getVulkanExtensions(uint32_t* extensionCount, bool debug) {
         fprintf(stderr, "Failed to get array of vulkan extensions required by GLFW\n");
         exit(EXIT_FAILURE);
     }
-    fprintf(stdout, "Got array of vulkan extensions required by GLFW\n");
 
     // Allocate memory for an array to store both glfw and maybe debug vulkan extensions
     *extensionCount = glfwExtensionCount + (debug == true ? 1 : 0);
@@ -32,11 +31,9 @@ const char** getVulkanExtensions(uint32_t* extensionCount, bool debug) {
         fprintf(stderr, "Failed to allocate vulkan extensions array of length %zu\n", *extensionCount * sizeof(const char*));
         exit(EXIT_FAILURE);
     }
-    fprintf(stdout, "Allocated vulkan extensions array of size %zu\n", *extensionCount * sizeof(const char*));
 
     // Copy glfw vulkan extensions to joined array and maybe add debug extension to the end
     memcpy(extensions, glfwExtensions, sizeof(const char*) * glfwExtensionCount);
-    fprintf(stdout, "Filled vulkan extensions array with required GLFW extensions\n");
     if(debug == true) {
         extensions[glfwExtensionCount] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
         fprintf(stdout, "Appended vulkan debug extensions to vulkan extensions array\n");
