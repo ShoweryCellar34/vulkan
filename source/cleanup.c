@@ -19,11 +19,11 @@ static cleanupCallbackNode* callbackStackHead = NULL;
 
 // This function will be registered with atExit() and pops callbacks one-by-one off the top of the stack and calls them with the data pointer provided during pushing
 void startCleanupCallbacks(void) {
+    fprintf(stdout, "Executing cleanup callbacks\n");
     while(callbackStackHead != NULL) {
         cleanupCallbackNode* callbackNode = callbackStackHead;
         callbackStackHead = callbackNode->next;
-        callbackNode->callback(callbackNode->callbackData);
-        fprintf(stdout, "Executed cleanup callback 0x%p with data 0x%p\n", callbackNode->callback, callbackNode->callbackData);
+        callbackNode->cleanupCallbackWrapper(callbackNode->cleanupCallbackArgs);
         free(callbackNode);
     }
 }
@@ -33,7 +33,7 @@ void pushCleanupCallback(void (*cleanupCallbackWrapper)(void*), void* cleanupCal
     cleanupCallbackNode* newCallbackStackHead = malloc(sizeof(cleanupCallbackNode));
     if(newCallbackStackHead == NULL) {
         fprintf(stdout, "Failed to allocate new cleanup callback node\n");
-        callback(callbackData);
+        cleanupCallbackWrapper(cleanupCallbackArgs);
         exit(EXIT_FAILURE);
     }
 
@@ -42,7 +42,7 @@ void pushCleanupCallback(void (*cleanupCallbackWrapper)(void*), void* cleanupCal
     newCallbackStackHead->cleanupCallbackArgs = cleanupCallbackArgs;
 
     // Push cleanup callback to stack
-    callbackStackHead->next = callbackStackHead;
+    newCallbackStackHead->next = callbackStackHead;
     callbackStackHead = newCallbackStackHead;
 }
 
@@ -51,11 +51,12 @@ cleanupCallback popCleanupCallback() {
     if(callbackStackHead != NULL) {
         cleanupCallbackNode* callbackNode = callbackStackHead;
         callbackStackHead = callbackNode->next;
-        free(callbackNode);
-        return (cleanupCallback){
-            .callback = callbackNode->callback,
-            .callbackData = callbackNode->callbackData
+        cleanupCallback callback = (cleanupCallback){
+            .callback = callbackNode->cleanupCallbackWrapper,
+            .callbackData = callbackNode->cleanupCallbackArgs
         };
+        free(callbackNode);
+        return callback;
     } else {
         return (cleanupCallback){
             .callback = NULL,

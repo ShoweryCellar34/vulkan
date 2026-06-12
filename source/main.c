@@ -11,6 +11,7 @@
 
 // Project Headers
 #include <cleanup.h>
+#include <cleanupMacros.h>
 #include <devices.h>
 #include <extensions.h>
 #include <layers.h>
@@ -22,9 +23,11 @@
 #define ARRAY_COUNT(x) sizeof(x) / sizeof(x[0])
 #define NULLFREE(x)    free(x); x = NULL
 
-void testCallback(void* data) {
-    fprintf(stdout, (const char*)data);
-}
+DEFINE_CALLBACK_ARGS_0(glfwTerminate)
+DEFINE_CALLBACK_ARGS_0(volkFinalize)
+DEFINE_CALLBACK_ARGS_2(vkDestroyInstance, VkInstance, const VkAllocationCallbacks*)
+DEFINE_CALLBACK_ARGS_3(vkDestroyDebugUtilsMessengerEXT, VkInstance, VkDebugUtilsMessengerEXT, const VkAllocationCallbacks*)
+DEFINE_CALLBACK_ARGS_3(vkDestroySurfaceKHR, VkInstance, VkSurfaceKHR, const VkAllocationCallbacks*)
 
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)  {
     window; key; scancode; action; mods;
@@ -59,7 +62,10 @@ int main(int argc, char* argv[]) {
     */
 
     // Setup the exit callbacks stack for cleaning up resources upon exit
-    atexit(startCleanupCallbacks);
+    if(atexit(startCleanupCallbacks) != 0) {
+        fprintf(stdout, "Failed to register cleanup callback stack with atExit()\n");
+        exit(EXIT_FAILURE);
+    }
 
     // initialize GLFW
     if(glfwInit() != GLFW_TRUE) {
@@ -68,6 +74,7 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "Failed to initialize GLFW:\n    Error Code:    %i\n    Error Message: %s\n", errorCode, errorMessage);
         return EXIT_FAILURE;
     }
+    PUSH_CLEANUP_ARGS_0(glfwTerminate);
     fprintf(stdout, "Initialized GLFW\n");
 
     // Check for minimal vulkan support
@@ -89,6 +96,7 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "Failed to create GLFW window:\n    Error Code:    %i\n    Error Message: %s\n", errorCode, errorMessage);
         return EXIT_FAILURE;
     }
+    pushCleanupCallback(glfwDestroyWindow, window);
     fprintf(stdout, "Created GLFW window\n");
 
     // Set the kay callback for the window so we can capture keyboard events
@@ -103,6 +111,7 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "Failed to load vulkan with volk: %i", result);
         return EXIT_FAILURE;
     }
+    PUSH_CLEANUP_ARGS_0(volkFinalize);
     fprintf(stdout, "Loaded vulkan using volk\n");
 
     // Get the vulkan extensions array and register its cleanup method
@@ -219,6 +228,7 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "Failed to create vulkan instance: %i\n", result);
         return EXIT_FAILURE;
     }
+    PUSH_CLEANUP_ARGS_2(vkDestroyInstance, instance, NULL);
     fprintf(stdout, "Created vulkan instance\n");
 
     // Load the vulkan library and instance-level vulkan functions
@@ -231,6 +241,7 @@ int main(int argc, char* argv[]) {
             fprintf(stderr, "Failed to set vulkan debug callback: %i\n", result);
             return EXIT_FAILURE;
         }
+        PUSH_CLEANUP_ARGS_3(vkDestroyDebugUtilsMessengerEXT, instance, debugMessenger, NULL);
         fprintf(stdout, "Added vulkan debug callback\n");
     #endif
 
@@ -240,6 +251,7 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "Failed to create vulkan surface for GLFW window: %i\n", result);
         return EXIT_FAILURE;
     }
+    PUSH_CLEANUP_ARGS_3(vkDestroySurfaceKHR, instance, windowSurface, NULL);
     fprintf(stdout, "Created vulkan surface for GLFW window\n");
 
     // Get the physical devices array and register its cleanup method
@@ -283,11 +295,13 @@ int main(int argc, char* argv[]) {
 
             if(graphicsQueueFamilyFound == true && presentationQueueFamilyFound == true && physicalDeviceProperties.apiVersion >= VK_API_VERSION_1_4) {
                 physicalDevice = physicalDevices[i];
-                break;
+                if(graphicsQueueFamily == presentationQueueFamily)
+                    break;
             }
         }
     }
 
+    // Ensure we have selected a physical device before preceding
     if(physicalDevice == VK_NULL_HANDLE) {
         fprintf(stdout, "Failed to find suitable vulkan physical device\n");
         exit(EXIT_FAILURE);
@@ -314,18 +328,6 @@ int main(int argc, char* argv[]) {
         glfwPollEvents();
     }
 
-    // Cleanup vulkan
-    vkDestroySurfaceKHR(instance, windowSurface, NULL);
-    #if DEBUG_BUILD == 1
-        vkDestroyDebugUtilsMessengerEXT(instance, debugMessenger, NULL);
-    #endif
-    vkDestroyInstance(instance, NULL);
-    volkFinalize();
-
-    // Cleanup GLFW
-    glfwDestroyWindow(window);
-    glfwTerminate();
-
-    // Exit with success
+    // Exit with success, the cleanup stack will clean everything up
     return EXIT_SUCCESS;
 }
