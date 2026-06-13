@@ -11,7 +11,10 @@
 
 // Project Headers
 
-// Get the list of layers supported by vulkan
-VkLayerProperties* getSupportedVulkanLayers(uint32_t* layerCount);
+// Get the list of layers we are going to use
+const char** getVulkanLayers(uint32_t* layersCount, bool debug);
+
+// Get the list of supported layers
+VkLayerProperties* getSupportedVulkanLayers(uint32_t* supportedLayersCount);
 
 #endif // LAYERS_H

@@ -10,10 +10,19 @@
 
 // Project Headers
 
-// Get the list of physical devices supported by vulkan
-VkPhysicalDevice* getVulkanPhysicalDevices(VkInstance instance, uint32_t* physicalDeviceCount);
+// Get the list of supported physical devices
+VkPhysicalDevice* getVulkanPhysicalDevices(VkInstance instance, uint32_t* physicalDevicesCount);
 
-// Get the list of queue families supported by a vulkan physical device
-VkQueueFamilyProperties* getVulkanPhysicalDeviceQueueFamilies(VkPhysicalDevice physicalDevice, uint32_t* queueFamilyCount);
+// get the suitability of a physical device
+uint32_t getVulkanPhysicalDeviceSuitability(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, const char** deviceExtensions, uint32_t deviceExtensionsCount, uint32_t* presentationQueueFamily, uint32_t* graphicsQueueFamily);
+
+// Get the list of queue families supported by a physical device
+VkQueueFamilyProperties* getVulkanPhysicalDeviceQueueFamilies(VkPhysicalDevice physicalDevice, uint32_t* queueFamiliesCount);
+
+// Get the list of device extensions we are going to use
+const char** getVulkanDeviceExtensions(uint32_t* deviceExtensionsCount);
+
+// Get the list of supported device extensions
+VkExtensionProperties* getSupportedVulkanDeviceExtensions(VkPhysicalDevice physicalDevice, uint32_t* supportedDeviceExtensionsCount);
 
 #endif // DEVICES_H

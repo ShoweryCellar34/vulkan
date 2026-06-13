@@ -28,6 +28,7 @@ DEFINE_CALLBACK_ARGS_0(volkFinalize)
 DEFINE_CALLBACK_ARGS_2(vkDestroyInstance, VkInstance, const VkAllocationCallbacks*)
 DEFINE_CALLBACK_ARGS_3(vkDestroyDebugUtilsMessengerEXT, VkInstance, VkDebugUtilsMessengerEXT, const VkAllocationCallbacks*)
 DEFINE_CALLBACK_ARGS_3(vkDestroySurfaceKHR, VkInstance, VkSurfaceKHR, const VkAllocationCallbacks*)
+DEFINE_CALLBACK_ARGS_2(vkDestroyDevice, VkDevice, const VkAllocationCallbacks*)
 
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)  {
     window; key; scancode; action; mods;
@@ -114,74 +115,78 @@ int main(int argc, char* argv[]) {
     PUSH_CLEANUP_ARGS_0(volkFinalize);
     fprintf(stdout, "Loaded vulkan using volk\n");
 
-    // Get the vulkan extensions array and register its cleanup method
-    uint32_t extensionCount = 0;
-    const char** extensions = getVulkanExtensions(&extensionCount, DEBUG_BUILD);
+    // Get the extensions array and register its cleanup method
+    uint32_t extensionsCount = 0;
+    const char** extensions = getVulkanExtensions(&extensionsCount, DEBUG_BUILD);
     pushCleanupCallback(free, extensions);
-    fprintf(stdout, "Successfully got list of required vulkan extensions\n");
+    fprintf(stdout, "Successfully got list of required extensions:\n");
 
-    // Get the supported vulkan extensions array and register its cleanup method
-    uint32_t supportedExtensionCount = 0;
-    VkExtensionProperties* supportedExtensions = getSupportedVulkanExtensions(&supportedExtensionCount);
-    pushCleanupCallback(free, supportedExtensions);
-    fprintf(stdout, "Successfully got list of supported vulkan extensions\n");
-
-    // Ensure all requested vulkan extensions are supported
-    uint32_t extensionsSupported = 0;
-    for(uint32_t i = 0; i < supportedExtensionCount; i++) {
-        for(uint32_t j = 0; j < extensionCount; j++) {
-            if(!strcmp(supportedExtensions[i].extensionName, extensions[j])) {
-                extensionsSupported++;
-            }
-        }
-    }
-    if(extensionsSupported != extensionCount) {
-        fprintf(stderr, "Not all requested vulkan extensions are supported\n");
-        exit(EXIT_FAILURE);
-    }
-    fprintf(stdout, "All required vulkan extensions are supported:\n");
-
-    // Print all the vulkan extensions we will use
-    for(uint32_t i = 0; i < extensionCount; i++) {
+    // Print all the extensions we will use
+    for(uint32_t i = 0; i < extensionsCount; i++) {
         fprintf(stdout, "    %s\n", extensions[i]);
     }
 
-    // Create the array of vulkan layers we will use
-    #if DEBUG_BUILD == 1
-        const char* layers[] = {
-            "VK_LAYER_KHRONOS_validation"
-        };
-        const uint32_t layerCount = ARRAY_COUNT(layers);
-    #else
-        const char* layers[1] = {NULL};
-        const uint32_t layerCount = 0;
-    #endif
+    // Get the supported extensions array and register its cleanup method
+    uint32_t supportedExtensionsCount = 0;
+    VkExtensionProperties* supportedExtensions = getSupportedVulkanExtensions(&supportedExtensionsCount);
+    pushCleanupCallback(free, supportedExtensions);
+    fprintf(stdout, "Successfully got list of supported extensions:\n");
 
-    // Get the supported vulkan layers array and register its cleanup method
-    uint32_t supportedLayerCount = 0;
-    VkLayerProperties* supportedLayers = getSupportedVulkanLayers(&supportedLayerCount);
-    pushCleanupCallback(free, supportedLayers);
-    fprintf(stdout, "Successfully got list of supported vulkan layers\n");
+    // Print all the extensions supported
+    for(uint32_t i = 0; i < supportedExtensionsCount; i++) {
+        fprintf(stdout, "    %s\n", supportedExtensions[i].extensionName);
+    }
 
-    // Ensure all requested vulkan layers are supported
-    uint32_t layersSupported = 0;
-    for(uint32_t i = 0; i < supportedLayerCount; i++) {
-        for(uint32_t j = 0; j < layerCount; j++) {
-            if(!strcmp(supportedLayers[i].layerName, layers[j])) {
-                layersSupported++;
+    // Ensure all requested extensions are supported
+    for(uint32_t i = 0; i < extensionsCount; i++) {
+        bool extensionSupported = false;
+        for(uint32_t j = 0; j < supportedExtensionsCount; j++) {
+            if(!strcmp(extensions[i], supportedExtensions[j].extensionName)) {
+                extensionSupported = true;
             }
         }
+        if(extensionSupported == false) {
+            fprintf(stderr, "Not all requested extensions are supported\n");
+            exit(EXIT_FAILURE);
+        }
     }
-    if(layersSupported != layerCount) {
-        fprintf(stderr, "Not all requested vulkan layers are supported\n");
-        exit(EXIT_FAILURE);
-    }
-    fprintf(stdout, "All required vulkan layers are supported:\n");
+    fprintf(stdout, "All required extensions are supported\n");
 
-    // Print all the vulkan layers we will use
-    for(uint32_t i = 0; i < layerCount; i++) {
+    // Create the array of layers we will use
+    uint32_t layersCount = 0;
+    const char** layers = getVulkanLayers(&layersCount, DEBUG_BUILD);
+    fprintf(stdout, "Successfully got list of required layers:\n");
+
+    // Print all the layers we will use
+    for(uint32_t i = 0; i < layersCount; i++) {
         fprintf(stdout, "    %s\n", layers[i]);
     }
+
+    // Get the supported layers array and register its cleanup method
+    uint32_t supportedLayersCount = 0;
+    VkLayerProperties* supportedLayers = getSupportedVulkanLayers(&supportedLayersCount);
+    pushCleanupCallback(free, supportedLayers);
+    fprintf(stdout, "Successfully got list of supported layers:\n");
+
+    // Print all the layers supported
+    for(uint32_t i = 0; i < supportedLayersCount; i++) {
+        fprintf(stdout, "    %s\n", supportedLayers[i].layerName);
+    }
+
+    // Ensure all requested layers are supported
+    for(uint32_t i = 0; i < layersCount; i++) {
+        bool layerSupported = false;
+        for(uint32_t j = 0; j < supportedLayersCount; j++) {
+            if(!strcmp(layers[i], supportedLayers[j].layerName)) {
+                layerSupported = true;
+            }
+        }
+        if(layerSupported == false) {
+            fprintf(stderr, "Not all requested layers are supported\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+    fprintf(stdout, "All required layers are supported\n");
 
     /*                         ___       __ ___           _  _ 
     \  / | | |  |/  /\  |\ |    |  |\ | (_   |  /\  |\ | /  |_ 
@@ -190,18 +195,14 @@ int main(int argc, char* argv[]) {
 
     VkDebugUtilsMessengerCreateInfoEXT debugInfo = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-        .pNext = NULL,
-        .flags = 0,
         .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
         .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
-        .pfnUserCallback = vulkanDebugCallback,
-        .pUserData = NULL
+        .pfnUserCallback = vulkanDebugCallback
     };
 
     // Create a struct containing the information about the application
     VkApplicationInfo applicationInfo = {
         .sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pNext              = NULL,
         .pApplicationName   = PROJECT_NAME,
         .applicationVersion = VK_MAKE_VERSION(PROJECT_VERSION_MAJOR, PROJECT_VERSION_MINOR, PROJECT_VERSION_PATCH),
         .pEngineName        = "No Engine",
@@ -213,11 +214,10 @@ int main(int argc, char* argv[]) {
     VkInstanceCreateInfo instanceInfo = {
         .sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pNext                   = &debugInfo,
-        .flags                   = 0,
         .pApplicationInfo        = &applicationInfo,
-        .enabledLayerCount       = layerCount,
+        .enabledLayerCount       = layersCount,
         .ppEnabledLayerNames     = layers,
-        .enabledExtensionCount   = extensionCount,
+        .enabledExtensionCount   = extensionsCount,
         .ppEnabledExtensionNames = extensions
     };
 
@@ -225,13 +225,13 @@ int main(int argc, char* argv[]) {
     VkInstance instance = VK_NULL_HANDLE;
     result = vkCreateInstance(&instanceInfo, NULL, &instance);
     if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create vulkan instance: %i\n", result);
+        fprintf(stderr, "Failed to create instance: %i\n", result);
         return EXIT_FAILURE;
     }
     PUSH_CLEANUP_ARGS_2(vkDestroyInstance, instance, NULL);
-    fprintf(stdout, "Created vulkan instance\n");
+    fprintf(stdout, "Created instance\n");
 
-    // Load the vulkan library and instance-level vulkan functions
+    // Load instance-level vulkan functions
     volkLoadInstance(instance);
 
     #if DEBUG_BUILD == 1
@@ -248,80 +248,141 @@ int main(int argc, char* argv[]) {
     VkSurfaceKHR windowSurface = VK_NULL_HANDLE;
     result = glfwCreateWindowSurface(instance, window, NULL, &windowSurface);
     if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create vulkan surface for GLFW window: %i\n", result);
+        fprintf(stderr, "Failed to create surface for GLFW window: %i\n", result);
         return EXIT_FAILURE;
     }
     PUSH_CLEANUP_ARGS_3(vkDestroySurfaceKHR, instance, windowSurface, NULL);
-    fprintf(stdout, "Created vulkan surface for GLFW window\n");
+    fprintf(stdout, "Created surface for GLFW window\n");
 
     // Get the physical devices array and register its cleanup method
-    uint32_t physicalDeviceCount = 0;
-    VkPhysicalDevice* physicalDevices = getVulkanPhysicalDevices(instance, &physicalDeviceCount);
+    uint32_t physicalDevicesCount = 0;
+    VkPhysicalDevice* physicalDevices = getVulkanPhysicalDevices(instance, &physicalDevicesCount);
     pushCleanupCallback(free, physicalDevices);
-    // Ensure there is atleast one vulkan physical device before continuing
-    if(physicalDeviceCount == 0) {
-        fprintf(stdout, "No vulkan physical devices supported\n");
+    // Ensure there is atleast one physical device before continuing
+    if(physicalDevicesCount == 0) {
+        fprintf(stdout, "No physical devices supported\n");
         exit(EXIT_FAILURE);
     }
-    fprintf(stdout, "Successfully got list of vulkan physical devices\n");
+    fprintf(stdout, "Successfully got list of physical devices:\n");
 
-    // Create a handle for our selected vulkan physical device and create variables to store the index of our selected queue families
-    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-    bool graphicsQueueFamilyFound = false, presentationQueueFamilyFound = false;
-    uint32_t graphicsQueueFamily = 0, presentationQueueFamily = 0;
-
-    // Iterate through all vulkan physical devices and queue families
-    for(uint32_t i = 0; i < physicalDeviceCount; i++) {
+    // Print all the physical devices supported
+    for(uint32_t i = 0; i < physicalDevicesCount; i++) {
         VkPhysicalDeviceProperties physicalDeviceProperties;
         vkGetPhysicalDeviceProperties(physicalDevices[i], &physicalDeviceProperties);
+        fprintf(stdout, "    %s\n", physicalDeviceProperties.deviceName);
+    }
 
-        uint32_t queueFamilyCount = 0;
-        VkQueueFamilyProperties* queueFamilies = getVulkanPhysicalDeviceQueueFamilies(physicalDevices[i], &queueFamilyCount);
-        for(uint32_t j = 0; j < queueFamilyCount; j++) {
-            VkBool32 presentationSupport = VK_FALSE;
-            result = vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevices[i], j, windowSurface, &presentationSupport);
-            if(result != VK_SUCCESS) {
-                fprintf(stdout, "Failed to check if a physical device queue family supports presenting to the GLFW windows surface\n");
-                exit(EXIT_FAILURE);
-            }
-            if(presentationSupport == VK_TRUE) {
-                presentationQueueFamilyFound = true;
-                presentationQueueFamily = j;
-            }
-            if(queueFamilies[j].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-                graphicsQueueFamilyFound = true;
-                graphicsQueueFamily = j;
-            }
+    // Create a handle for our selected physical device and create variables to store the index of our selected queue families
+    uint32_t highestScore = 0;
+    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+    uint32_t presentationQueueFamily = 0, graphicsQueueFamily = 0;
 
-            if(graphicsQueueFamilyFound == true && presentationQueueFamilyFound == true && physicalDeviceProperties.apiVersion >= VK_API_VERSION_1_4) {
-                physicalDevice = physicalDevices[i];
-                if(graphicsQueueFamily == presentationQueueFamily)
-                    break;
-            }
+    // Get the device extensions array, it is static and does not need to be freed
+    uint32_t deviceExtensionsCount = 0;
+    const char** deviceExtensions = getVulkanDeviceExtensions(&deviceExtensionsCount);
+    fprintf(stdout, "Successfully got list of required device extensions:\n");
+
+    // Print all the device extensions we will use
+    for(uint32_t i = 0; i < deviceExtensionsCount; i++) {
+        fprintf(stdout, "    %s\n", deviceExtensions[i]);
+    }
+
+    // Iterate through all physical devices and select the best one
+    for(uint32_t i = 0; i < physicalDevicesCount; i++) {
+        uint32_t tempPresentationQueueFamily = 0, tempGraphicsQueueFamily = 0;
+        uint32_t score = getVulkanPhysicalDeviceSuitability(physicalDevices[i], windowSurface, deviceExtensions, deviceExtensionsCount, &tempPresentationQueueFamily, &tempGraphicsQueueFamily);
+        if(score > highestScore) {
+            highestScore = score;
+            physicalDevice = physicalDevices[i];
+            presentationQueueFamily = tempPresentationQueueFamily;
+            graphicsQueueFamily = tempGraphicsQueueFamily;
         }
     }
 
-    // Ensure we have selected a physical device before preceding
-    if(physicalDevice == VK_NULL_HANDLE) {
-        fprintf(stdout, "Failed to find suitable vulkan physical device\n");
+    // Ensure we have a suitable physical device before preceding
+    if(physicalDevice == VK_NULL_HANDLE || highestScore == 0) {
+        fprintf(stdout, "Failed to find suitable physical device\n");
         exit(EXIT_FAILURE);
     }
 
-    // Print the vulkan physical device we will use
-    VkPhysicalDeviceProperties physicalDeviceProperties;
-    vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
-    VkPhysicalDeviceFeatures physicalDeviceFeatures;
-    vkGetPhysicalDeviceFeatures(physicalDevice, &physicalDeviceFeatures);
+    // Add our the presentation and graphics queue families to an array
+    float queuePriority = 1.0f;
+    VkDeviceQueueCreateInfo queueFamilies[2];
+    uint32_t queueFamiliesCount = 0;
+    queueFamilies[queueFamiliesCount++] = (VkDeviceQueueCreateInfo){
+            .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            .queueFamilyIndex = presentationQueueFamily,
+            .queueCount       = 1,
+            .pQueuePriorities = &queuePriority,
+        };
+    if(presentationQueueFamily != graphicsQueueFamily) {
+        queueFamilies[queueFamiliesCount++] = (VkDeviceQueueCreateInfo){
+            .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            .queueFamilyIndex = graphicsQueueFamily,
+            .queueCount       = 1,
+            .pQueuePriorities = &queuePriority,
+        };
+    }
+
+    // Print the physical device we will use
+    VkPhysicalDeviceProperties2 physicalDeviceProperties = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2
+    };
+    vkGetPhysicalDeviceProperties2(physicalDevice, &physicalDeviceProperties);
     fprintf(
         stdout,
-        "Found suitable vulkan physical device:\n    Name:                      %s\n    API Version:               %" PRIu32 ".%" PRIu32 ".%" PRIu32 "\n    Graphics Queue Family:     %" PRIu32 "\n    Presentation Queue Family: %" PRIu32 "\n",
-        physicalDeviceProperties.deviceName,
-        VK_VERSION_MAJOR(physicalDeviceProperties.apiVersion),
-        VK_VERSION_MINOR(physicalDeviceProperties.apiVersion),
-        VK_VERSION_PATCH(physicalDeviceProperties.apiVersion),
+        "Found suitable physical device:\n    Name:                      %s\n    API Version:               %" PRIu32 ".%" PRIu32 ".%" PRIu32 "\n    Graphics Queue Family:     %" PRIu32 "\n    Presentation Queue Family: %" PRIu32 "\n",
+        physicalDeviceProperties.properties.deviceName,
+        VK_VERSION_MAJOR(physicalDeviceProperties.properties.apiVersion),
+        VK_VERSION_MINOR(physicalDeviceProperties.properties.apiVersion),
+        VK_VERSION_PATCH(physicalDeviceProperties.properties.apiVersion),
         graphicsQueueFamily,
         presentationQueueFamily
     );
+
+    VkPhysicalDeviceVulkan11Features enabledDeviceFeatures_1_1 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES
+    };
+    VkPhysicalDeviceVulkan12Features enabledDeviceFeatures_1_2 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+        .pNext = &enabledDeviceFeatures_1_1
+    };
+    VkPhysicalDeviceVulkan13Features enabledDeviceFeatures_1_3 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+        .pNext = &enabledDeviceFeatures_1_2
+    };
+    VkPhysicalDeviceVulkan14Features enabledDeviceFeatures_1_4 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
+        .pNext = &enabledDeviceFeatures_1_3
+    };
+    VkPhysicalDeviceFeatures2 enabledDeviceFeatures = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+        .pNext = &enabledDeviceFeatures_1_4
+    };
+
+    VkDeviceCreateInfo deviceInfo = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .pNext = &enabledDeviceFeatures,
+        .queueCreateInfoCount = queueFamiliesCount,
+        .pQueueCreateInfos = queueFamilies,
+        .enabledExtensionCount = deviceExtensionsCount,
+        .ppEnabledExtensionNames = deviceExtensions
+    };
+
+    VkDevice device = VK_NULL_HANDLE;
+    result = vkCreateDevice(physicalDevice, &deviceInfo, NULL, &device);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create logical device: %i\n", result);
+        return EXIT_FAILURE;
+    }
+    PUSH_CLEANUP_ARGS_2(vkDestroyDevice, device, NULL);
+    fprintf(stdout, "Created logical device\n");
+
+    VkQueue presentationQueue = VK_NULL_HANDLE;
+    VkQueue graphicsQueue = VK_NULL_HANDLE;
+
+    vkGetDeviceQueue(device, presentationQueueFamily, 0, &presentationQueue);
+    vkGetDeviceQueue(device, graphicsQueueFamily, 0, &graphicsQueue);
 
     // Main application loop
     while(!glfwWindowShouldClose(window)) {
