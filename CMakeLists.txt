@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.15)
 project(vulkanTestApp LANGUAGES C VERSION 0.0.1)
 
 # Set the C Standard Settings
-set(CMAKE_C_STANDARD 17)
+set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
@@ -94,11 +94,23 @@ FetchContent_Declare(
     GIT_TAG        83d5b2c97378e61a4666825fd3a5548955c83add
 )
 
+FetchContent_Declare(
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG        31c1ad37456438565541f4919958214b6e762fb4
+)
+
 # Download dependencies
-FetchContent_MakeAvailable(volk vma glfw cglm)
+FetchContent_MakeAvailable(volk vma glfw cglm stb)
+
+add_library(VulkanMemoryAllocatorImplementation vma.cpp)
+target_link_libraries(VulkanMemoryAllocatorImplementation PRIVATE volk VulkanMemoryAllocator)
+
+add_library(stb stb.c)
+target_include_directories(stb PUBLIC ${stb_SOURCE_DIR})
 
 # Link dependencies to executable
-target_link_libraries(${PROJECT_NAME} PRIVATE volk VulkanMemoryAllocator glfw cglm)
+target_link_libraries(${PROJECT_NAME} PRIVATE volk VulkanMemoryAllocator VulkanMemoryAllocatorImplementation glfw cglm stb)
 
 # Set the include directories
 target_include_directories(${PROJECT_NAME} PRIVATE 

@@ -9,7 +9,7 @@
 
 // Project Headers
 
-typedef struct cleanupCallbackNode {
+typedef struct {
     void (*cleanupCallbackWrapper)(void*);
     void* cleanupCallbackArgs;
     struct cleanupCallbackNode* next;

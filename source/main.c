@@ -20,15 +20,13 @@
 #define WINDOW_WIDTH  800
 #define WINDOW_HEIGHT 450
 
-#define ARRAY_COUNT(x) sizeof(x) / sizeof(x[0])
-#define NULLFREE(x)    free(x); x = NULL
-
 DEFINE_CALLBACK_ARGS_0(glfwTerminate)
 DEFINE_CALLBACK_ARGS_0(volkFinalize)
 DEFINE_CALLBACK_ARGS_2(vkDestroyInstance, VkInstance, const VkAllocationCallbacks*)
 DEFINE_CALLBACK_ARGS_3(vkDestroyDebugUtilsMessengerEXT, VkInstance, VkDebugUtilsMessengerEXT, const VkAllocationCallbacks*)
 DEFINE_CALLBACK_ARGS_3(vkDestroySurfaceKHR, VkInstance, VkSurfaceKHR, const VkAllocationCallbacks*)
 DEFINE_CALLBACK_ARGS_2(vkDestroyDevice, VkDevice, const VkAllocationCallbacks*)
+DEFINE_CALLBACK_ARGS_1(vmaDestroyAllocator, VmaAllocator)
 
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)  {
     window; key; scancode; action; mods;
@@ -113,7 +111,7 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
     PUSH_CLEANUP_ARGS_0(volkFinalize);
-    fprintf(stdout, "Loaded vulkan using volk\n");
+    fprintf(stdout, "Loaded global level vulkan functions using volk\n");
 
     // Get the extensions array and register its cleanup method
     uint32_t extensionsCount = 0;
@@ -188,11 +186,6 @@ int main(int argc, char* argv[]) {
     }
     fprintf(stdout, "All required layers are supported\n");
 
-    /*                         ___       __ ___           _  _ 
-    \  / | | |  |/  /\  |\ |    |  |\ | (_   |  /\  |\ | /  |_ 
-     \/  |_| |_ |\ /--\ | \|   _|_ | \| __)  | /--\ | \| \_ |_ 
-    */
-
     VkDebugUtilsMessengerCreateInfoEXT debugInfo = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
         .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
@@ -231,8 +224,9 @@ int main(int argc, char* argv[]) {
     PUSH_CLEANUP_ARGS_2(vkDestroyInstance, instance, NULL);
     fprintf(stdout, "Created instance\n");
 
-    // Load instance-level vulkan functions
+    // Load instance level vulkan functions
     volkLoadInstance(instance);
+    fprintf(stdout, "Loaded instance level vulkan functions using volk\n");
 
     #if DEBUG_BUILD == 1
         VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
@@ -253,6 +247,16 @@ int main(int argc, char* argv[]) {
     }
     PUSH_CLEANUP_ARGS_3(vkDestroySurfaceKHR, instance, windowSurface, NULL);
     fprintf(stdout, "Created surface for GLFW window\n");
+
+    // Get the device extensions array, it is static and does not need to be freed
+    uint32_t deviceExtensionsCount = 0;
+    const char** deviceExtensions = getVulkanDeviceExtensions(&deviceExtensionsCount);
+    fprintf(stdout, "Successfully got list of required device extensions:\n");
+
+    // Print all the device extensions we will use
+    for(uint32_t i = 0; i < deviceExtensionsCount; i++) {
+        fprintf(stdout, "    %s\n", deviceExtensions[i]);
+    }
 
     // Get the physical devices array and register its cleanup method
     uint32_t physicalDevicesCount = 0;
@@ -276,16 +280,6 @@ int main(int argc, char* argv[]) {
     uint32_t highestScore = 0;
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     uint32_t presentationQueueFamily = 0, graphicsQueueFamily = 0;
-
-    // Get the device extensions array, it is static and does not need to be freed
-    uint32_t deviceExtensionsCount = 0;
-    const char** deviceExtensions = getVulkanDeviceExtensions(&deviceExtensionsCount);
-    fprintf(stdout, "Successfully got list of required device extensions:\n");
-
-    // Print all the device extensions we will use
-    for(uint32_t i = 0; i < deviceExtensionsCount; i++) {
-        fprintf(stdout, "    %s\n", deviceExtensions[i]);
-    }
 
     // Iterate through all physical devices and select the best one
     for(uint32_t i = 0; i < physicalDevicesCount; i++) {
@@ -331,7 +325,7 @@ int main(int argc, char* argv[]) {
     vkGetPhysicalDeviceProperties2(physicalDevice, &physicalDeviceProperties);
     fprintf(
         stdout,
-        "Found suitable physical device:\n    Name:                      %s\n    API Version:               %" PRIu32 ".%" PRIu32 ".%" PRIu32 "\n    Graphics Queue Family:     %" PRIu32 "\n    Presentation Queue Family: %" PRIu32 "\n",
+        "Using suitable physical device:\n    Name:                      %s\n    API Version:               %" PRIu32 ".%" PRIu32 ".%" PRIu32 "\n    Graphics Queue Family:     %" PRIu32 "\n    Presentation Queue Family: %" PRIu32 "\n",
         physicalDeviceProperties.properties.deviceName,
         VK_VERSION_MAJOR(physicalDeviceProperties.properties.apiVersion),
         VK_VERSION_MINOR(physicalDeviceProperties.properties.apiVersion),
@@ -378,11 +372,39 @@ int main(int argc, char* argv[]) {
     PUSH_CLEANUP_ARGS_2(vkDestroyDevice, device, NULL);
     fprintf(stdout, "Created logical device\n");
 
+    // Load device level vulkan functions
+    volkLoadDevice(device);
+    fprintf(stdout, "Loaded device level vulkan functions using volk\n");
+
     VkQueue presentationQueue = VK_NULL_HANDLE;
     VkQueue graphicsQueue = VK_NULL_HANDLE;
 
     vkGetDeviceQueue(device, presentationQueueFamily, 0, &presentationQueue);
     vkGetDeviceQueue(device, graphicsQueueFamily, 0, &graphicsQueue);
+
+    VmaAllocatorCreateInfo allocatorCreateInfo = {
+        .physicalDevice = physicalDevice,
+        .device = device,
+        .instance = instance,
+        .vulkanApiVersion = VK_API_VERSION_1_4
+    };
+
+    VmaVulkanFunctions vulkanFunctions;
+    result = vmaImportVulkanFunctionsFromVolk(&allocatorCreateInfo, &vulkanFunctions);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to import vulkan functions from volk for VMA: %i\n", result);
+        return EXIT_FAILURE;
+    }
+    allocatorCreateInfo.pVulkanFunctions = &vulkanFunctions;
+
+    VmaAllocator allocator;
+    result = vmaCreateAllocator(&allocatorCreateInfo, &allocator);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create the VMA allocator: %i\n", result);
+        return EXIT_FAILURE;
+    }
+    PUSH_CLEANUP_ARGS_1(vmaDestroyAllocator, allocator);
+    fprintf(stdout, "Created the VMA allocator\n");
 
     // Main application loop
     while(!glfwWindowShouldClose(window)) {

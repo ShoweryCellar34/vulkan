@@ -56,6 +56,55 @@ uint32_t getVulkanPhysicalDeviceSuitability(VkPhysicalDevice physicalDevice, VkS
         return 0;
     }
 
+    VkResult result = VK_SUCCESS;
+
+    VkSurfaceCapabilitiesKHR surfaceCapabilities;
+    result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities);
+    if(result != VK_SUCCESS) {
+        fprintf(stdout, "Failed to get surface capabilities: %i\n", result);
+        exit(EXIT_FAILURE);
+    }
+
+    // Get the length of the supported surface formats array
+    uint32_t surfaceFormatsCount = 0;
+    result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatsCount, NULL);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to get number of supported surface formats: %i\n", result);
+        exit(EXIT_FAILURE);
+    }
+
+    // If no surface formats are supported we exit early to avoid allocating 0 bytes and doing unnecessary operations
+    if(surfaceFormatsCount == 0) {
+        return 0;
+    }
+
+    // Allocate the supported surface formats array
+    VkSurfaceFormatKHR* surfaceFormats = malloc(sizeof(VkSurfaceFormatKHR) * surfaceFormatsCount);
+    if(surfaceFormats == NULL) {
+        fprintf(stderr, "Failed to allocate supported surface formats array of size %zu\n", surfaceFormatsCount * sizeof(VkSurfaceFormatKHR));
+        exit(EXIT_FAILURE);
+    }
+    pushCleanupCallback(free, surfaceFormats);
+
+    // Fill the supported surface formats array with the list of supported surface formats
+    result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatsCount, surfaceFormats);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to get number of supported surface formats: %i\n", result);
+        exit(EXIT_FAILURE);
+    }
+
+    // Ensure all required surface formats are supported
+    bool surfaceFormatSupported = false;
+    for(uint32_t i = 0; i < surfaceFormatsCount; i++) {
+        if(surfaceFormats[i].format == VK_FORMAT_B8G8R8A8_SRGB && surfaceFormats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+            surfaceFormatSupported = true;
+        }
+    }
+    if(surfaceFormatSupported == false) {
+        return 0;
+    }
+    popAndCallCleanupCallback();
+
     // Get the supported device extensions array and register its cleanup method
     uint32_t supportedDeviceExtensionsCount = 0;
     VkExtensionProperties* supportedDeviceExtensions = getSupportedVulkanDeviceExtensions(physicalDevice, &supportedDeviceExtensionsCount);
@@ -87,9 +136,10 @@ uint32_t getVulkanPhysicalDeviceSuitability(VkPhysicalDevice physicalDevice, VkS
     for(uint32_t i = 0; i < queueFamilyCount; i++) {
         // Check if the current queue family supports presentation
         VkBool32 presentationSupport = VK_FALSE;
-        VkResult result = vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentationSupport);
+        result = vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentationSupport);
         if(result != VK_SUCCESS) {
             fprintf(stdout, "Failed to check if a physical device queue family supports presenting to the window surface: %i\n", result);
+            exit(EXIT_FAILURE);
         }
         if(presentationSupport == VK_TRUE) {
             presentationQueueFamilyFound = true;

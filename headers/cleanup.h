@@ -2,7 +2,7 @@
 #define CLEANUP_H
 
 // This struct stores the function pointer to the callback and a void pointer as arbitrary data to be passed to that function when it is ran
-typedef struct cleanupCallback {
+typedef struct {
     void (*callback)(void*);
     void** callbackData;
 } cleanupCallback;
