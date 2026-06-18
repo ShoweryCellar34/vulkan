@@ -45,6 +45,9 @@ VkPhysicalDevice* getVulkanPhysicalDevices(VkInstance instance, uint32_t* physic
 }
 
 uint32_t getVulkanPhysicalDeviceSuitability(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, const char** deviceExtensions, uint32_t deviceExtensionsCount, uint32_t* presentationQueueFamily, uint32_t* graphicsQueueFamily) {
+    // Create a variable to store the result of vulkan functions for error checking and reporting
+    VkResult result = VK_SUCCESS;
+
     // get the properties of the physical device we are currently checking
     VkPhysicalDeviceProperties2 physicalDeviceProperties = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2
@@ -54,15 +57,6 @@ uint32_t getVulkanPhysicalDeviceSuitability(VkPhysicalDevice physicalDevice, VkS
     // Ensure the current physical device supports at least vulkan 1.4
     if(physicalDeviceProperties.properties.apiVersion < VK_API_VERSION_1_4) {
         return 0;
-    }
-
-    VkResult result = VK_SUCCESS;
-
-    VkSurfaceCapabilitiesKHR surfaceCapabilities;
-    result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities);
-    if(result != VK_SUCCESS) {
-        fprintf(stdout, "Failed to get surface capabilities: %i\n", result);
-        exit(EXIT_FAILURE);
     }
 
     // Get the length of the supported surface formats array

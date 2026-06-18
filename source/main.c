@@ -20,6 +20,8 @@
 #define WINDOW_WIDTH  800
 #define WINDOW_HEIGHT 450
 
+#define CLAMP(val, min, max) (((val) < (min)) ? (min) : (((val) > (max)) ? (max) : (val)))
+
 DEFINE_CALLBACK_ARGS_0(glfwTerminate)
 DEFINE_CALLBACK_ARGS_0(volkFinalize)
 DEFINE_CALLBACK_ARGS_2(vkDestroyInstance, VkInstance, const VkAllocationCallbacks*)
@@ -239,13 +241,13 @@ int main(int argc, char* argv[]) {
         fprintf(stdout, "Added vulkan debug callback\n");
     #endif
 
-    VkSurfaceKHR windowSurface = VK_NULL_HANDLE;
-    result = glfwCreateWindowSurface(instance, window, NULL, &windowSurface);
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
+    result = glfwCreateWindowSurface(instance, window, NULL, &surface);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to create surface for GLFW window: %i\n", result);
         return EXIT_FAILURE;
     }
-    PUSH_CLEANUP_ARGS_3(vkDestroySurfaceKHR, instance, windowSurface, NULL);
+    PUSH_CLEANUP_ARGS_3(vkDestroySurfaceKHR, instance, surface, NULL);
     fprintf(stdout, "Created surface for GLFW window\n");
 
     // Get the device extensions array, it is static and does not need to be freed
@@ -276,7 +278,7 @@ int main(int argc, char* argv[]) {
         fprintf(stdout, "    %s\n", physicalDeviceProperties.deviceName);
     }
 
-    // Create a handle for our selected physical device and create variables to store the index of our selected queue families
+    // Create a handle for our selected physical device and create variables to store the index of our selected queue families and number of images in our swapchain
     uint32_t highestScore = 0;
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     uint32_t presentationQueueFamily = 0, graphicsQueueFamily = 0;
@@ -284,7 +286,7 @@ int main(int argc, char* argv[]) {
     // Iterate through all physical devices and select the best one
     for(uint32_t i = 0; i < physicalDevicesCount; i++) {
         uint32_t tempPresentationQueueFamily = 0, tempGraphicsQueueFamily = 0;
-        uint32_t score = getVulkanPhysicalDeviceSuitability(physicalDevices[i], windowSurface, deviceExtensions, deviceExtensionsCount, &tempPresentationQueueFamily, &tempGraphicsQueueFamily);
+        uint32_t score = getVulkanPhysicalDeviceSuitability(physicalDevices[i], surface, deviceExtensions, deviceExtensionsCount, &tempPresentationQueueFamily, &tempGraphicsQueueFamily);
         if(score > highestScore) {
             highestScore = score;
             physicalDevice = physicalDevices[i];
@@ -298,6 +300,22 @@ int main(int argc, char* argv[]) {
         fprintf(stdout, "Failed to find suitable physical device\n");
         exit(EXIT_FAILURE);
     }
+
+    // Print the physical device we will use
+    VkPhysicalDeviceProperties2 physicalDeviceProperties = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2
+    };
+    vkGetPhysicalDeviceProperties2(physicalDevice, &physicalDeviceProperties);
+    fprintf(
+        stdout,
+        "Using suitable physical device:\n    Name:                      %s\n    API Version:               %" PRIu32 ".%" PRIu32 ".%" PRIu32 "\n    Graphics Queue Family:     %" PRIu32 "\n    Presentation Queue Family: %" PRIu32 "\n",
+        physicalDeviceProperties.properties.deviceName,
+        VK_VERSION_MAJOR(physicalDeviceProperties.properties.apiVersion),
+        VK_VERSION_MINOR(physicalDeviceProperties.properties.apiVersion),
+        VK_VERSION_PATCH(physicalDeviceProperties.properties.apiVersion),
+        graphicsQueueFamily,
+        presentationQueueFamily
+    );
 
     // Add our the presentation and graphics queue families to an array
     float queuePriority = 1.0f;
@@ -317,22 +335,6 @@ int main(int argc, char* argv[]) {
             .pQueuePriorities = &queuePriority,
         };
     }
-
-    // Print the physical device we will use
-    VkPhysicalDeviceProperties2 physicalDeviceProperties = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2
-    };
-    vkGetPhysicalDeviceProperties2(physicalDevice, &physicalDeviceProperties);
-    fprintf(
-        stdout,
-        "Using suitable physical device:\n    Name:                      %s\n    API Version:               %" PRIu32 ".%" PRIu32 ".%" PRIu32 "\n    Graphics Queue Family:     %" PRIu32 "\n    Presentation Queue Family: %" PRIu32 "\n",
-        physicalDeviceProperties.properties.deviceName,
-        VK_VERSION_MAJOR(physicalDeviceProperties.properties.apiVersion),
-        VK_VERSION_MINOR(physicalDeviceProperties.properties.apiVersion),
-        VK_VERSION_PATCH(physicalDeviceProperties.properties.apiVersion),
-        graphicsQueueFamily,
-        presentationQueueFamily
-    );
 
     VkPhysicalDeviceVulkan11Features enabledDeviceFeatures_1_1 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES
@@ -405,6 +407,43 @@ int main(int argc, char* argv[]) {
     }
     PUSH_CLEANUP_ARGS_1(vmaDestroyAllocator, allocator);
     fprintf(stdout, "Created the VMA allocator\n");
+
+    VkSurfaceCapabilitiesKHR surfaceCapabilities;
+    result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities);
+    if(result != VK_SUCCESS) {
+        fprintf(stdout, "Failed to get surface capabilities: %i\n", result);
+        exit(EXIT_FAILURE);
+    }
+
+    // Set the number of images that should be in the swapchain
+    uint32_t swapchainImageCount = surfaceCapabilities.minImageCount + (surfaceCapabilities.maxImageCount > surfaceCapabilities.minImageCount || surfaceCapabilities.maxImageCount == 0 ? 1 : 0);
+
+    // Set the dimensions of the swapchain
+    VkExtent2D swapchainExtent;
+    if(surfaceCapabilities.currentExtent.width == UINT32_MAX) {
+        int windowWidth, windowHeight;
+        glfwGetFramebufferSize(window, &windowWidth, &windowHeight);
+
+        swapchainExtent.width = CLAMP((uint32_t)windowWidth, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
+        swapchainExtent.height = CLAMP((uint32_t)windowHeight, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+    } else {
+        swapchainExtent = surfaceCapabilities.currentExtent;
+    }
+
+    VkSwapchainCreateInfoKHR swapChainCreateInfo = {
+        .surface          = surface,
+        .minImageCount    = swapchainImageCount,
+        .imageFormat      = VK_FORMAT_B8G8R8A8_SRGB,
+        .imageColorSpace  = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
+        .imageExtent      = swapchainExtent,
+        .imageArrayLayers = 1,
+        .imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .preTransform     = surfaceCapabilities.currentTransform,
+        .compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        .presentMode      = VK_PRESENT_MODE_FIFO_KHR,
+        .clipped          = true
+    };
 
     // Main application loop
     while(!glfwWindowShouldClose(window)) {
