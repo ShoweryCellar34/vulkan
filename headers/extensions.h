@@ -17,4 +17,10 @@ const char** getVulkanExtensions(uint32_t* extensionsCount, bool debug);
 // Get the list of supported extensions
 VkExtensionProperties* getSupportedVulkanExtensions(uint32_t* supportedExtensionsCount);
 
+// Get the list of device extensions we are going to use
+const char** getVulkanDeviceExtensions(uint32_t* deviceExtensionsCount);
+
+// Get the list of supported device extensions
+VkExtensionProperties* getSupportedVulkanDeviceExtensions(VkPhysicalDevice physicalDevice, uint32_t* supportedDeviceExtensionsCount);
+
 #endif // EXTENSIONS_H

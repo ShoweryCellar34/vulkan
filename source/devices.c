@@ -10,6 +10,7 @@
 
 // Project Headers
 #include <cleanup.h>
+#include <extensions.h>
 
 VkPhysicalDevice* getVulkanPhysicalDevices(VkInstance instance, uint32_t* physicalDevicesCount) {
     // Create a variable to store the result of vulkan functions for error checking and reporting
@@ -175,66 +176,4 @@ uint32_t getVulkanPhysicalDeviceSuitability(VkPhysicalDevice physicalDevice, VkS
     }
 
     return score;
-}
-
-VkQueueFamilyProperties* getVulkanPhysicalDeviceQueueFamilies(VkPhysicalDevice physicalDevice, uint32_t* queueFamiliesCount) {
-    // Get the length of the supported queue families array
-    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, queueFamiliesCount, NULL);
-    if(*queueFamiliesCount == 0) {
-        return NULL;
-    }
-
-    // Allocate the supported physical devices array
-    VkQueueFamilyProperties* queueFamilies = malloc(sizeof(VkQueueFamilyProperties) * *queueFamiliesCount);
-    if(queueFamilies == NULL) {
-        fprintf(stderr, "Failed to allocate supported queue families array of size %zu\n", *queueFamiliesCount * sizeof(VkQueueFamilyProperties));
-        exit(EXIT_FAILURE);
-    }
-
-    // Fill the supported queue families array with the list of supported queue families for the physical device
-    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, queueFamiliesCount, queueFamilies);
-
-    return queueFamilies;
-}
-
-static const char* deviceExtensions[] = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME
-};
-
-const char** getVulkanDeviceExtensions(uint32_t* deviceExtensionsCount) {
-    *deviceExtensionsCount = sizeof(deviceExtensions) / sizeof(*deviceExtensions);
-    return deviceExtensions;
-}
-
-VkExtensionProperties* getSupportedVulkanDeviceExtensions(VkPhysicalDevice physicalDevice, uint32_t* supportedDeviceExtensionsCount) {
-    // Create a variable to store the result of vulkan functions for error checking and reporting
-    VkResult result = VK_SUCCESS;
-
-    // Get the length of the supported device extensions array
-    result = vkEnumerateDeviceExtensionProperties(physicalDevice, NULL, supportedDeviceExtensionsCount, NULL);
-    if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to get number of supported device extensions: %i\n", result);
-        exit(EXIT_FAILURE);
-    }
-
-    // If no device extensions are supported we exit early to avoid allocating 0 bytes and doing unnecessary operations
-    if(*supportedDeviceExtensionsCount == 0) {
-        return NULL;
-    }
-
-    // Allocate the supported device extensions array
-    VkExtensionProperties* supportedDeviceExtensions = malloc(sizeof(VkExtensionProperties) * *supportedDeviceExtensionsCount);
-    if(supportedDeviceExtensions == NULL) {
-        fprintf(stderr, "Failed to allocate supported extensions array of size %zu\n", *supportedDeviceExtensionsCount * sizeof(VkExtensionProperties));
-        exit(EXIT_FAILURE);
-    }
-
-    // Fill the supported device extensions array with the list of supported device extensions
-    result = vkEnumerateDeviceExtensionProperties(physicalDevice, NULL, supportedDeviceExtensionsCount, supportedDeviceExtensions);
-    if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to get number of supported device extensions: %i\n", result);
-        exit(EXIT_FAILURE);
-    }
-
-    return supportedDeviceExtensions;
 }

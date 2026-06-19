@@ -17,6 +17,7 @@ set(SOURCES
     source/cleanup.c
     source/devices.c
     source/extensions.c
+    source/files.c
     source/layers.c
     source/main.c
 )
@@ -150,5 +151,5 @@ add_custom_command(
 
     COMMAND ${CMAKE_COMMAND} -E echo "Compiling shaders to build folder"
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${PROJECT_NAME}>/resources/shaders"
-    COMMAND ${SLANG_COMPILER} ${CMAKE_CURRENT_SOURCE_DIR}/resources/shaders/test.slang -profile spirv_1_6 -o $<TARGET_FILE_DIR:${PROJECT_NAME}>/resources/shaders/test.spv
+    COMMAND ${SLANG_COMPILER} ${CMAKE_CURRENT_SOURCE_DIR}/resources/shaders/basic.slang -profile spirv_1_6 -fvk-use-entrypoint-name -entry vertMain -entry fragMain -o $<TARGET_FILE_DIR:${PROJECT_NAME}>/resources/shaders/basic.spv
 )

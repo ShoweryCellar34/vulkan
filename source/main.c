@@ -29,6 +29,8 @@ DEFINE_CALLBACK_ARGS_3(vkDestroyDebugUtilsMessengerEXT, VkInstance, VkDebugUtils
 DEFINE_CALLBACK_ARGS_3(vkDestroySurfaceKHR, VkInstance, VkSurfaceKHR, const VkAllocationCallbacks*)
 DEFINE_CALLBACK_ARGS_2(vkDestroyDevice, VkDevice, const VkAllocationCallbacks*)
 DEFINE_CALLBACK_ARGS_1(vmaDestroyAllocator, VmaAllocator)
+DEFINE_CALLBACK_ARGS_3(vkDestroySwapchainKHR, VkDevice, VkSwapchainKHR, const VkAllocationCallbacks*)
+DEFINE_CALLBACK_ARGS_3(vkDestroyImageView, VkDevice, VkImageView, const VkAllocationCallbacks*)
 
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)  {
     window; key; scancode; action; mods;
@@ -430,11 +432,19 @@ int main(int argc, char* argv[]) {
         swapchainExtent = surfaceCapabilities.currentExtent;
     }
 
-    VkSwapchainCreateInfoKHR swapChainCreateInfo = {
+    VkSurfaceFormatKHR swapchainFormat = {
+        .format     = VK_FORMAT_B8G8R8A8_SRGB,
+        .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+    };
+
+    VkSwapchainCreateInfoKHR swapchainCreateInfo = {
+        .sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .pNext            = NULL,
+        .flags            = 0,
         .surface          = surface,
         .minImageCount    = swapchainImageCount,
-        .imageFormat      = VK_FORMAT_B8G8R8A8_SRGB,
-        .imageColorSpace  = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
+        .imageFormat      = swapchainFormat.format,
+        .imageColorSpace  = swapchainFormat.colorSpace,
         .imageExtent      = swapchainExtent,
         .imageArrayLayers = 1,
         .imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
@@ -444,6 +454,83 @@ int main(int argc, char* argv[]) {
         .presentMode      = VK_PRESENT_MODE_FIFO_KHR,
         .clipped          = true
     };
+
+    if(presentationQueueFamily != graphicsQueueFamily) {
+        swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+        swapchainCreateInfo.queueFamilyIndexCount = 2;
+        swapchainCreateInfo.pQueueFamilyIndices = (const uint32_t[]){presentationQueueFamily, graphicsQueueFamily};
+    }
+
+    VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+    result = vkCreateSwapchainKHR(device, &swapchainCreateInfo, NULL, &swapchain);
+    if(result != VK_SUCCESS) {
+        fprintf(stdout, "Failed to create swapchain: %i\n", result);
+        exit(EXIT_FAILURE);
+    }
+    PUSH_CLEANUP_ARGS_3(vkDestroySwapchainKHR, device, swapchain, NULL);
+    fprintf(stdout, "Created swapchain\n");
+
+    uint32_t swapchainImagesCount = 0;
+
+    // Get the length of the swapchain images array
+    result = vkGetSwapchainImagesKHR(device, swapchain, &swapchainImagesCount, NULL);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to get number of swapchain images: %i\n", result);
+        exit(EXIT_FAILURE);
+    }
+
+    // Allocate the swapchain images array
+    VkImage* swapchainImages = malloc(sizeof(VkImage) * swapchainImagesCount);
+    if(swapchainImages == NULL) {
+        fprintf(stderr, "Failed to allocate swapchain images array of size %zu\n", swapchainImagesCount * sizeof(VkImage));
+        exit(EXIT_FAILURE);
+    }
+    pushCleanupCallback(free, swapchainImages);
+
+    // Fill the swapchain images array with the list of swapchain images
+    result = vkGetSwapchainImagesKHR(device, swapchain, &swapchainImagesCount, swapchainImages);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to get number of swapchain images: %i\n", result);
+        exit(EXIT_FAILURE);
+    }
+
+    VkImageViewCreateInfo swapchainImageViewsCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = swapchainFormat.format,
+        .components = {
+            VK_COMPONENT_SWIZZLE_IDENTITY,
+            VK_COMPONENT_SWIZZLE_IDENTITY,
+            VK_COMPONENT_SWIZZLE_IDENTITY,
+            VK_COMPONENT_SWIZZLE_IDENTITY
+        },
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .levelCount = 1,
+            .layerCount = 1
+        }
+    };
+
+    // Allocate the swapchain image views array
+    VkImageView* swapchainImageViews = malloc(sizeof(VkImageView) * swapchainImagesCount);
+    if(swapchainImageViews == NULL) {
+        fprintf(stderr, "Failed to allocate swapchain image views array of size %zu\n", swapchainImagesCount * sizeof(VkImageView));
+        exit(EXIT_FAILURE);
+    }
+    pushCleanupCallback(free, swapchainImageViews);
+
+    for(uint32_t i = 0; i < swapchainImagesCount; i++) {
+        swapchainImageViewsCreateInfo.image = swapchainImages[i];
+        result = vkCreateImageView(device, &swapchainImageViewsCreateInfo, NULL, &swapchainImageViews[i]);
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Failed to create swapchain image view %" PRIu32 ": %i\n", i, result);
+            exit(EXIT_FAILURE);
+        }
+        PUSH_CLEANUP_ARGS_3(vkDestroyImageView, device, swapchainImageViews[i], NULL);
+        fprintf(stderr, "Created swapchain image view %" PRIu32 "\n", i);
+    }
 
     // Main application loop
     while(!glfwWindowShouldClose(window)) {
