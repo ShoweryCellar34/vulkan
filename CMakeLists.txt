@@ -17,7 +17,6 @@ set(SOURCES
     source/cleanup.c
     source/devices.c
     source/extensions.c
-    source/files.c
     source/layers.c
     source/main.c
 )

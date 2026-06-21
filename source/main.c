@@ -31,6 +31,8 @@ DEFINE_CALLBACK_ARGS_2(vkDestroyDevice, VkDevice, const VkAllocationCallbacks*)
 DEFINE_CALLBACK_ARGS_1(vmaDestroyAllocator, VmaAllocator)
 DEFINE_CALLBACK_ARGS_3(vkDestroySwapchainKHR, VkDevice, VkSwapchainKHR, const VkAllocationCallbacks*)
 DEFINE_CALLBACK_ARGS_3(vkDestroyImageView, VkDevice, VkImageView, const VkAllocationCallbacks*)
+DEFINE_CALLBACK_ARGS_1(fclose, FILE*)
+DEFINE_CALLBACK_ARGS_3(vkDestroyShaderModule, VkDevice, VkShaderModule, const VkAllocationCallbacks*)
 
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)  {
     window; key; scancode; action; mods;
@@ -197,7 +199,7 @@ int main(int argc, char* argv[]) {
         .pfnUserCallback = vulkanDebugCallback
     };
 
-    // Create a struct containing the information about the application
+    // Create a struct containing the settings for the application
     VkApplicationInfo applicationInfo = {
         .sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
         .pApplicationName   = PROJECT_NAME,
@@ -207,7 +209,7 @@ int main(int argc, char* argv[]) {
         .apiVersion         = VK_API_VERSION_1_4
     };
 
-    // Create a struct containing the information about the instance
+    // Create a struct containing the settings for the instance
     VkInstanceCreateInfo instanceInfo = {
         .sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pNext                   = &debugInfo,
@@ -218,7 +220,7 @@ int main(int argc, char* argv[]) {
         .ppEnabledExtensionNames = extensions
     };
 
-    // Create the instance with the instance info and application instance structs we created
+    // Create the instance
     VkInstance instance = VK_NULL_HANDLE;
     result = vkCreateInstance(&instanceInfo, NULL, &instance);
     if(result != VK_SUCCESS) {
@@ -232,6 +234,7 @@ int main(int argc, char* argv[]) {
     volkLoadInstance(instance);
     fprintf(stdout, "Loaded instance level vulkan functions using volk\n");
 
+    // Create the debug callback if this is a debug build
     #if DEBUG_BUILD == 1
         VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
         result = vkCreateDebugUtilsMessengerEXT(instance, &debugInfo, NULL, &debugMessenger);
@@ -243,6 +246,7 @@ int main(int argc, char* argv[]) {
         fprintf(stdout, "Added vulkan debug callback\n");
     #endif
 
+    // Create the GLFW window surface
     VkSurfaceKHR surface = VK_NULL_HANDLE;
     result = glfwCreateWindowSurface(instance, window, NULL, &surface);
     if(result != VK_SUCCESS) {
@@ -338,8 +342,10 @@ int main(int argc, char* argv[]) {
         };
     }
 
+    // List the features we want our logical device to have
     VkPhysicalDeviceVulkan11Features enabledDeviceFeatures_1_1 = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+        .shaderDrawParameters = VK_TRUE
     };
     VkPhysicalDeviceVulkan12Features enabledDeviceFeatures_1_2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
@@ -358,6 +364,7 @@ int main(int argc, char* argv[]) {
         .pNext = &enabledDeviceFeatures_1_4
     };
 
+    // Create a struct containing the settings for the logical device
     VkDeviceCreateInfo deviceInfo = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .pNext = &enabledDeviceFeatures,
@@ -367,6 +374,7 @@ int main(int argc, char* argv[]) {
         .ppEnabledExtensionNames = deviceExtensions
     };
 
+    // Create the logical device
     VkDevice device = VK_NULL_HANDLE;
     result = vkCreateDevice(physicalDevice, &deviceInfo, NULL, &device);
     if(result != VK_SUCCESS) {
@@ -380,12 +388,14 @@ int main(int argc, char* argv[]) {
     volkLoadDevice(device);
     fprintf(stdout, "Loaded device level vulkan functions using volk\n");
 
+    // Get the the handles to the presentation and graphics queues
     VkQueue presentationQueue = VK_NULL_HANDLE;
     VkQueue graphicsQueue = VK_NULL_HANDLE;
 
     vkGetDeviceQueue(device, presentationQueueFamily, 0, &presentationQueue);
     vkGetDeviceQueue(device, graphicsQueueFamily, 0, &graphicsQueue);
 
+    // Create a struct containing the settings for the VMA allocator
     VmaAllocatorCreateInfo allocatorCreateInfo = {
         .physicalDevice = physicalDevice,
         .device = device,
@@ -393,6 +403,7 @@ int main(int argc, char* argv[]) {
         .vulkanApiVersion = VK_API_VERSION_1_4
     };
 
+    // Get the list of vulkan functions for VMA from volk
     VmaVulkanFunctions vulkanFunctions;
     result = vmaImportVulkanFunctionsFromVolk(&allocatorCreateInfo, &vulkanFunctions);
     if(result != VK_SUCCESS) {
@@ -401,6 +412,7 @@ int main(int argc, char* argv[]) {
     }
     allocatorCreateInfo.pVulkanFunctions = &vulkanFunctions;
 
+    // Create the VMA allocator
     VmaAllocator allocator;
     result = vmaCreateAllocator(&allocatorCreateInfo, &allocator);
     if(result != VK_SUCCESS) {
@@ -410,6 +422,7 @@ int main(int argc, char* argv[]) {
     PUSH_CLEANUP_ARGS_1(vmaDestroyAllocator, allocator);
     fprintf(stdout, "Created the VMA allocator\n");
 
+    // Get the capabilities of the surface
     VkSurfaceCapabilitiesKHR surfaceCapabilities;
     result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities);
     if(result != VK_SUCCESS) {
@@ -432,15 +445,15 @@ int main(int argc, char* argv[]) {
         swapchainExtent = surfaceCapabilities.currentExtent;
     }
 
+    // Define the surface format we will use
     VkSurfaceFormatKHR swapchainFormat = {
         .format     = VK_FORMAT_B8G8R8A8_SRGB,
         .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
     };
 
+    // Create a struct containing the settings for the swapchain
     VkSwapchainCreateInfoKHR swapchainCreateInfo = {
         .sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .pNext            = NULL,
-        .flags            = 0,
         .surface          = surface,
         .minImageCount    = swapchainImageCount,
         .imageFormat      = swapchainFormat.format,
@@ -455,12 +468,14 @@ int main(int argc, char* argv[]) {
         .clipped          = true
     };
 
+    // Change the image sharing mode in the swapchain create info struct
     if(presentationQueueFamily != graphicsQueueFamily) {
         swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
         swapchainCreateInfo.queueFamilyIndexCount = 2;
         swapchainCreateInfo.pQueueFamilyIndices = (const uint32_t[]){presentationQueueFamily, graphicsQueueFamily};
     }
 
+    // Create the swapchain
     VkSwapchainKHR swapchain = VK_NULL_HANDLE;
     result = vkCreateSwapchainKHR(device, &swapchainCreateInfo, NULL, &swapchain);
     if(result != VK_SUCCESS) {
@@ -470,9 +485,8 @@ int main(int argc, char* argv[]) {
     PUSH_CLEANUP_ARGS_3(vkDestroySwapchainKHR, device, swapchain, NULL);
     fprintf(stdout, "Created swapchain\n");
 
-    uint32_t swapchainImagesCount = 0;
-
     // Get the length of the swapchain images array
+    uint32_t swapchainImagesCount = 0;
     result = vkGetSwapchainImagesKHR(device, swapchain, &swapchainImagesCount, NULL);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to get number of swapchain images: %i\n", result);
@@ -494,10 +508,9 @@ int main(int argc, char* argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    // Create a struct containing the settings for the swapchain image views
     VkImageViewCreateInfo swapchainImageViewsCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .pNext = NULL,
-        .flags = 0,
         .viewType = VK_IMAGE_VIEW_TYPE_2D,
         .format = swapchainFormat.format,
         .components = {
@@ -521,6 +534,7 @@ int main(int argc, char* argv[]) {
     }
     pushCleanupCallback(free, swapchainImageViews);
 
+    // Create the swapchain image views
     for(uint32_t i = 0; i < swapchainImagesCount; i++) {
         swapchainImageViewsCreateInfo.image = swapchainImages[i];
         result = vkCreateImageView(device, &swapchainImageViewsCreateInfo, NULL, &swapchainImageViews[i]);
@@ -531,6 +545,77 @@ int main(int argc, char* argv[]) {
         PUSH_CLEANUP_ARGS_3(vkDestroyImageView, device, swapchainImageViews[i], NULL);
         fprintf(stderr, "Created swapchain image view %" PRIu32 "\n", i);
     }
+
+    // Open the shader file
+    FILE* shaderFile = fopen("resources/shaders/basic.spv", "rb");
+    if(shaderFile == NULL) {
+        fprintf(stderr, "Failed to open file: %s\n", "resources/shaders/basic.spv");
+        exit(EXIT_FAILURE);
+    }
+    PUSH_CLEANUP_ARGS_1(fclose, shaderFile);
+    fprintf(stdout, "Opened file: %s", "resources/shaders/basic.spv\n");
+
+    // Set our position in the shader file to the end to get the shader file length
+    if(fseek(shaderFile, 0, SEEK_END) != 0) {
+        fprintf(stderr, "Failed to seek to end of file: %s\n", "resources/shaders/basic.spv");
+        return EXIT_FAILURE;
+    }
+
+    // Get the length of the supported extensions array
+    long shaderFileDataCount = ftell(shaderFile);
+    if(shaderFileDataCount < 0) {
+        fprintf(stderr, "Failed to get length of file: %s\n", "resources/shaders/basic.spv");
+        return EXIT_FAILURE;
+    }
+    if(shaderFileDataCount % 4 != 0) {
+        fprintf(stderr, "Length of file data is not a multiple of 4 (required for SPIR-V shaders) for file: %s\n", "resources/shaders/basic.spv");
+        return EXIT_FAILURE;
+    }
+
+    // Set our position in the shader file to the begining for reading
+    if(fseek(shaderFile, 0, SEEK_SET) != 0) {
+        fprintf(stderr, "Failed to seek to begining of file: %s\n", "resources/shaders/basic.spv");
+        return EXIT_FAILURE;
+    }
+
+    // Allocate the shader file data array
+    unsigned char* shaderFileData = malloc(sizeof(unsigned char) * shaderFileDataCount);
+    if(shaderFileData == NULL) {
+        fprintf(stderr, "Failed to allocate file data array of size %zu for file: %s\n", shaderFileDataCount * sizeof(unsigned char), "resources/shaders/basic.spv");
+        exit(EXIT_FAILURE);
+    }
+    pushCleanupCallback(free, shaderFileData);
+
+    // Fill the shader file data array with the shader file data
+    size_t shaderFileDataCountRead = fread(shaderFileData, 1, shaderFileDataCount, shaderFile);
+    if(shaderFileDataCountRead < (size_t)shaderFileDataCount) {
+        if(ferror(shaderFile)) {
+            fprintf(stderr, "Error reading data for file: %s\n", "resources/shaders/basic.spv");
+        } else if(feof(shaderFile)) {
+            fprintf(stderr, "Unexpected end of file for file: %s\n", "resources/shaders/basic.spv");
+        }
+        exit(EXIT_FAILURE);
+    }
+    fprintf(stdout, "Read file contents for file: %s", "resources/shaders/basic.spv\n");
+
+    // Close the file handle
+    popAndCallCleanupCallback(1);
+
+    // Create a struct containing the settings for the shader module
+    VkShaderModuleCreateInfo shaderModuleCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = (size_t)shaderFileDataCount,
+        .pCode = (uint32_t*)shaderFileData
+    };
+
+    VkShaderModule shaderModule = VK_NULL_HANDLE;
+    result = vkCreateShaderModule(device, &shaderModuleCreateInfo, NULL, &shaderModule);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create shader module %i\n", result);
+        exit(EXIT_FAILURE);
+    }
+    PUSH_CLEANUP_ARGS_3(vkDestroyShaderModule, device, shaderModule, NULL);
+    fprintf(stdout, "Created shader module\n");
 
     // Main application loop
     while(!glfwWindowShouldClose(window)) {

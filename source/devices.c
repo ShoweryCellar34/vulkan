@@ -98,7 +98,7 @@ uint32_t getVulkanPhysicalDeviceSuitability(VkPhysicalDevice physicalDevice, VkS
     if(surfaceFormatSupported == false) {
         return 0;
     }
-    popAndCallCleanupCallback();
+    popAndCallCleanupCallback(0);
 
     // Get the supported device extensions array and register its cleanup method
     uint32_t supportedDeviceExtensionsCount = 0;
@@ -118,7 +118,7 @@ uint32_t getVulkanPhysicalDeviceSuitability(VkPhysicalDevice physicalDevice, VkS
         }
     }
     // We can pop and call the most recent cleanup callback which frees the supported device extensions array because we don't need it anymore
-    popAndCallCleanupCallback();
+    popAndCallCleanupCallback(0);
 
     // Get the queue families supported by the current physical device
     uint32_t queueFamilyCount = 0;
@@ -153,7 +153,7 @@ uint32_t getVulkanPhysicalDeviceSuitability(VkPhysicalDevice physicalDevice, VkS
         }
     }
     // We can pop and call the most recent cleanup callback which frees the queue families array because we don't need it anymore
-    popAndCallCleanupCallback();
+    popAndCallCleanupCallback(0);
 
     // If we haven't found every needed queue family on the same physical device we set the graphics and presentation queues to not found
     if(presentationQueueFamilyFound == false || graphicsQueueFamilyFound == false) {
