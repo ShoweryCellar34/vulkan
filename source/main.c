@@ -33,6 +33,7 @@ DEFINE_CALLBACK_ARGS_3(vkDestroySwapchainKHR, VkDevice, VkSwapchainKHR, const Vk
 DEFINE_CALLBACK_ARGS_3(vkDestroyImageView, VkDevice, VkImageView, const VkAllocationCallbacks*)
 DEFINE_CALLBACK_ARGS_1(fclose, FILE*)
 DEFINE_CALLBACK_ARGS_3(vkDestroyShaderModule, VkDevice, VkShaderModule, const VkAllocationCallbacks*)
+DEFINE_CALLBACK_ARGS_3(vkDestroyPipelineLayout, VkDevice, VkPipelineLayout, const VkAllocationCallbacks*)
 
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)  {
     window; key; scancode; action; mods;
@@ -608,6 +609,7 @@ int main(int argc, char* argv[]) {
         .pCode = (uint32_t*)shaderFileData
     };
 
+    // Create the shader module
     VkShaderModule shaderModule = VK_NULL_HANDLE;
     result = vkCreateShaderModule(device, &shaderModuleCreateInfo, NULL, &shaderModule);
     if(result != VK_SUCCESS) {
@@ -616,6 +618,87 @@ int main(int argc, char* argv[]) {
     }
     PUSH_CLEANUP_ARGS_3(vkDestroyShaderModule, device, shaderModule, NULL);
     fprintf(stdout, "Created shader module\n");
+
+    VkPipelineShaderStageCreateInfo shaderStages[] = {
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_VERTEX_BIT,
+            .module = shaderModule,
+            .pName = "vertMain"
+        },
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .module = shaderModule,
+            .pName = "fragMain"
+        }
+    };
+
+    VkPipelineVertexInputStateCreateInfo   vertexInputInfo = {0};
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly = {
+        .sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+        .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
+    };
+    VkPipelineViewportStateCreateInfo      viewportState = {
+        .sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        .viewportCount = 1,
+        .scissorCount  = 1
+    };
+
+    VkPipelineRasterizationStateCreateInfo rasterizer = {
+        .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        .depthClampEnable        = VK_FALSE,
+        .rasterizerDiscardEnable = VK_FALSE,
+        .polygonMode             = VK_POLYGON_MODE_FILL,
+        .cullMode                = VK_CULL_MODE_BACK_BIT,
+        .frontFace               = VK_FRONT_FACE_CLOCKWISE,
+        .depthBiasEnable         = VK_FALSE,
+        .lineWidth               = 1.0f
+    };
+
+    VkPipelineMultisampleStateCreateInfo multisampling = {
+        .sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+        .sampleShadingEnable  = VK_FALSE
+    };
+
+    VkPipelineColorBlendAttachmentState colorBlendAttachment = {
+        .blendEnable    = VK_FALSE,
+        .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
+    };
+
+    VkPipelineColorBlendStateCreateInfo colorBlending = {
+        .sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        .logicOpEnable   = VK_FALSE,
+        .logicOp         = VK_LOGIC_OP_COPY,
+        .attachmentCount = 1,
+        .pAttachments    = &colorBlendAttachment
+    };
+
+    VkDynamicState dynamicStates[] = {
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR
+    };
+    VkPipelineDynamicStateCreateInfo dynamicState = {
+        .sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        .dynamicStateCount = (uint32_t)(sizeof(dynamicStates) / sizeof(*dynamicStates)),
+        .pDynamicStates    = dynamicStates
+    };
+
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo = {
+        .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount         = 0,
+        .pushConstantRangeCount = 0
+    };
+
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+    result = vkCreatePipelineLayout(device, &pipelineLayoutInfo, NULL, &pipelineLayout);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to shader pipeline layout %i\n", result);
+        exit(EXIT_FAILURE);
+    }
+    PUSH_CLEANUP_ARGS_3(vkDestroyPipelineLayout, device, pipelineLayout, NULL);
+    fprintf(stdout, "Created shader pipeline layout\n");
 
     // Main application loop
     while(!glfwWindowShouldClose(window)) {
