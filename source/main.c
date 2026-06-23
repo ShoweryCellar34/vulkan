@@ -34,6 +34,8 @@ DEFINE_CALLBACK_ARGS_3(vkDestroyImageView, VkDevice, VkImageView, const VkAlloca
 DEFINE_CALLBACK_ARGS_1(fclose, FILE*)
 DEFINE_CALLBACK_ARGS_3(vkDestroyShaderModule, VkDevice, VkShaderModule, const VkAllocationCallbacks*)
 DEFINE_CALLBACK_ARGS_3(vkDestroyPipelineLayout, VkDevice, VkPipelineLayout, const VkAllocationCallbacks*)
+DEFINE_CALLBACK_ARGS_3(vkDestroyPipeline, VkDevice, VkPipeline, const VkAllocationCallbacks*)
+DEFINE_CALLBACK_ARGS_3(vkDestroyCommandPool, VkDevice, VkCommandPool, const VkAllocationCallbacks*)
 
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)  {
     window; key; scancode; action; mods;
@@ -53,6 +55,41 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(
     return VK_FALSE;
 }
 
+void transitionImageLayout(
+    VkCommandBuffer         commandBuffer,
+    VkImage                 image,
+    VkImageLayout           oldLayout,
+    VkImageLayout           newLayout,
+    VkAccessFlags2          srcAccessMask,
+    VkAccessFlags2          dstAccessMask,
+    VkPipelineStageFlags2   srcStageMask,
+    VkPipelineStageFlags2   dstStageMask
+) {
+    VkImageMemoryBarrier2 barrier = {
+        .srcStageMask        = srcStageMask,
+        .srcAccessMask       = srcAccessMask,
+        .dstStageMask        = dstStageMask,
+        .dstAccessMask       = dstAccessMask,
+        .oldLayout           = oldLayout,
+        .newLayout           = newLayout,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image               = image,
+        .subresourceRange    = {
+                .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel   = 0,
+                .levelCount     = 1,
+                .baseArrayLayer = 0,
+                .layerCount     = 1
+        }
+    };
+    VkDependencyInfo dependencyInfo = {
+        .imageMemoryBarrierCount = 1,
+        .pImageMemoryBarriers    = &barrier
+    };
+    vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
+}
+
 int main(int argc, char* argv[]) {
     // Output project info and argument count
     printf("Project Name:    %s\nProject Version: %s\nArg Count:       %i\n", PROJECT_NAME, PROJECT_VERSION, argc);
@@ -61,11 +98,6 @@ int main(int argc, char* argv[]) {
     for(int i = 0; i < argc; i++) {
         printf("Arg %i:           %s\n", i, argv[i]);
     }
-
-    /*__  _ ___     _  
-    (_  |_  | | | |_) 
-    __) |_  | |_| |   
-    */
 
     // Setup the exit callbacks stack for cleaning up resources upon exit
     if(atexit(startCleanupCallbacks) != 0) {
@@ -288,17 +320,17 @@ int main(int argc, char* argv[]) {
     // Create a handle for our selected physical device and create variables to store the index of our selected queue families and number of images in our swapchain
     uint32_t highestScore = 0;
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-    uint32_t presentationQueueFamily = 0, graphicsQueueFamily = 0;
+    uint32_t graphicsQueueFamily = 0, presentationQueueFamily = 0;
 
     // Iterate through all physical devices and select the best one
     for(uint32_t i = 0; i < physicalDevicesCount; i++) {
-        uint32_t tempPresentationQueueFamily = 0, tempGraphicsQueueFamily = 0;
+        uint32_t tempGraphicsQueueFamily = 0, tempPresentationQueueFamily = 0;
         uint32_t score = getVulkanPhysicalDeviceSuitability(physicalDevices[i], surface, deviceExtensions, deviceExtensionsCount, &tempPresentationQueueFamily, &tempGraphicsQueueFamily);
         if(score > highestScore) {
             highestScore = score;
             physicalDevice = physicalDevices[i];
-            presentationQueueFamily = tempPresentationQueueFamily;
             graphicsQueueFamily = tempGraphicsQueueFamily;
+            presentationQueueFamily = tempPresentationQueueFamily;
         }
     }
 
@@ -324,20 +356,20 @@ int main(int argc, char* argv[]) {
         presentationQueueFamily
     );
 
-    // Add our the presentation and graphics queue families to an array
+    // Add our the graphics and presentation queue families to an array
     float queuePriority = 1.0f;
     VkDeviceQueueCreateInfo queueFamilies[2];
     uint32_t queueFamiliesCount = 0;
     queueFamilies[queueFamiliesCount++] = (VkDeviceQueueCreateInfo){
             .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-            .queueFamilyIndex = presentationQueueFamily,
+            .queueFamilyIndex = graphicsQueueFamily,
             .queueCount       = 1,
             .pQueuePriorities = &queuePriority,
         };
-    if(presentationQueueFamily != graphicsQueueFamily) {
+    if(graphicsQueueFamily != presentationQueueFamily) {
         queueFamilies[queueFamiliesCount++] = (VkDeviceQueueCreateInfo){
             .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-            .queueFamilyIndex = graphicsQueueFamily,
+            .queueFamilyIndex = presentationQueueFamily,
             .queueCount       = 1,
             .pQueuePriorities = &queuePriority,
         };
@@ -345,7 +377,7 @@ int main(int argc, char* argv[]) {
 
     // List the features we want our logical device to have
     VkPhysicalDeviceVulkan11Features enabledDeviceFeatures_1_1 = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+        .sType                = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
         .shaderDrawParameters = VK_TRUE
     };
     VkPhysicalDeviceVulkan12Features enabledDeviceFeatures_1_2 = {
@@ -354,7 +386,8 @@ int main(int argc, char* argv[]) {
     };
     VkPhysicalDeviceVulkan13Features enabledDeviceFeatures_1_3 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-        .pNext = &enabledDeviceFeatures_1_2
+        .pNext = &enabledDeviceFeatures_1_2,
+        .dynamicRendering = VK_TRUE
     };
     VkPhysicalDeviceVulkan14Features enabledDeviceFeatures_1_4 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
@@ -389,12 +422,11 @@ int main(int argc, char* argv[]) {
     volkLoadDevice(device);
     fprintf(stdout, "Loaded device level vulkan functions using volk\n");
 
-    // Get the the handles to the presentation and graphics queues
-    VkQueue presentationQueue = VK_NULL_HANDLE;
+    // Get the the handles to the graphics and presentation queues
     VkQueue graphicsQueue = VK_NULL_HANDLE;
-
-    vkGetDeviceQueue(device, presentationQueueFamily, 0, &presentationQueue);
+    VkQueue presentationQueue = VK_NULL_HANDLE;
     vkGetDeviceQueue(device, graphicsQueueFamily, 0, &graphicsQueue);
+    vkGetDeviceQueue(device, presentationQueueFamily, 0, &presentationQueue);
 
     // Create a struct containing the settings for the VMA allocator
     VmaAllocatorCreateInfo allocatorCreateInfo = {
@@ -470,10 +502,10 @@ int main(int argc, char* argv[]) {
     };
 
     // Change the image sharing mode in the swapchain create info struct
-    if(presentationQueueFamily != graphicsQueueFamily) {
+    if(graphicsQueueFamily != presentationQueueFamily) {
         swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
         swapchainCreateInfo.queueFamilyIndexCount = 2;
-        swapchainCreateInfo.pQueueFamilyIndices = (const uint32_t[]){presentationQueueFamily, graphicsQueueFamily};
+        swapchainCreateInfo.pQueueFamilyIndices = (const uint32_t[]){graphicsQueueFamily, presentationQueueFamily};
     }
 
     // Create the swapchain
@@ -634,7 +666,9 @@ int main(int argc, char* argv[]) {
         }
     };
 
-    VkPipelineVertexInputStateCreateInfo   vertexInputInfo = {0};
+    VkPipelineVertexInputStateCreateInfo   vertexInputInfo = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO
+    };
     VkPipelineInputAssemblyStateCreateInfo inputAssembly = {
         .sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
         .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
@@ -694,15 +728,145 @@ int main(int argc, char* argv[]) {
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
     result = vkCreatePipelineLayout(device, &pipelineLayoutInfo, NULL, &pipelineLayout);
     if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to shader pipeline layout %i\n", result);
+        fprintf(stderr, "Failed to create graphics pipeline layout %i\n", result);
         exit(EXIT_FAILURE);
     }
     PUSH_CLEANUP_ARGS_3(vkDestroyPipelineLayout, device, pipelineLayout, NULL);
-    fprintf(stdout, "Created shader pipeline layout\n");
+    fprintf(stdout, "Created graphics pipeline layout\n");
+
+    VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo = {
+        .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+        .colorAttachmentCount = 1,
+        .pColorAttachmentFormats = &swapchainFormat.format
+    };
+
+    VkGraphicsPipelineCreateInfo pipelineCreateInfo = {
+        .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+        .pNext               = (void*)&pipelineRenderingCreateInfo,
+        .stageCount          = 2,
+        .pStages             = shaderStages,
+        .pVertexInputState   = &vertexInputInfo,
+        .pInputAssemblyState = &inputAssembly,
+        .pViewportState      = &viewportState,
+        .pRasterizationState = &rasterizer,
+        .pMultisampleState   = &multisampling,
+        .pColorBlendState    = &colorBlending,
+        .pDynamicState       = &dynamicState,
+        .layout              = pipelineLayout,
+        .renderPass          = NULL
+    };
+
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineCreateInfo, NULL, &pipeline);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create graphics pipeline %i\n", result);
+        exit(EXIT_FAILURE);
+    }
+    PUSH_CLEANUP_ARGS_3(vkDestroyPipeline, device, pipeline, NULL);
+    fprintf(stdout, "Created graphics pipeline\n");
+
+    VkCommandPoolCreateInfo commandPoolCreateInfo = {
+        .sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        .queueFamilyIndex = graphicsQueueFamily
+    };
+
+    VkCommandPool graphicsCommandPool = VK_NULL_HANDLE;
+    VkCommandPool presentationCommandPool = VK_NULL_HANDLE;
+    result = vkCreateCommandPool(device, &commandPoolCreateInfo, NULL, &graphicsCommandPool);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create graphics command pool %i\n", result);
+        exit(EXIT_FAILURE);
+    }
+    PUSH_CLEANUP_ARGS_3(vkDestroyCommandPool, device, graphicsCommandPool, NULL);
+    fprintf(stdout, "Created graphics command pool\n");
+
+    if(graphicsQueueFamily != presentationQueueFamily) {
+        result = vkCreateCommandPool(device, &commandPoolCreateInfo, NULL, &presentationCommandPool);
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Failed to create presentation command pool %i\n", result);
+            exit(EXIT_FAILURE);
+        }
+        PUSH_CLEANUP_ARGS_3(vkDestroyCommandPool, device, presentationCommandPool, NULL);
+        fprintf(stdout, "Created presentation command pool\n");
+    } else {
+        presentationCommandPool = graphicsCommandPool;
+        fprintf(stdout, "Reusing graphics command pool as presentation command pool\n");
+    }
+
+    VkCommandBufferAllocateInfo commandBufferAllocationInfo = {
+        .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool        = graphicsCommandPool,
+        .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1
+    };
+
+    VkCommandBuffer graphicsCommandBuffer = VK_NULL_HANDLE;
+    VkCommandBuffer presentationCommandBuffer = VK_NULL_HANDLE;
+    result = vkAllocateCommandBuffers(device, &commandBufferAllocationInfo, &graphicsCommandBuffer);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to allocate graphics command buffer %i\n", result);
+        exit(EXIT_FAILURE);
+    }
+    fprintf(stdout, "Allocated graphics command buffer\n");
+
+    if(graphicsQueueFamily != presentationQueueFamily) {
+        commandBufferAllocationInfo.commandPool = presentationCommandPool;
+        result = vkAllocateCommandBuffers(device, &commandBufferAllocationInfo, &presentationCommandBuffer);
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Failed to allocate presentation command buffer %i\n", result);
+            exit(EXIT_FAILURE);
+        }
+        fprintf(stdout, "Allocated presentation command buffer\n");
+    } else {
+        presentationCommandBuffer = graphicsCommandBuffer;
+        fprintf(stdout, "Reusing graphics command buffer as presentation command buffer\n");
+    }
 
     // Main application loop
     while(!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+
+        static uint32_t swapchainImageIndex = 0;
+
+        VkCommandBufferBeginInfo graphicsCommandBufferBeginInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
+        };
+        result = vkBeginCommandBuffer(graphicsCommandBuffer, &graphicsCommandBufferBeginInfo);
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Failed to begin graphics command buffer %i\n", result);
+            exit(EXIT_FAILURE);
+        }
+
+        // Before starting rendering, transition the swapchain image to vk::ImageLayout::eColorAttachmentOptimal
+        transitionImageLayout(
+            graphicsCommandBuffer,
+            swapchainImages[swapchainImageIndex],
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            0,
+            VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT
+        );
+
+        VkClearValue clearColor = {
+            .color = {
+                0.0f,
+                0.0f,
+                0.0f,
+                1.0f
+            }
+        };
+        VkRenderingAttachmentInfo attachmentInfo = {
+            .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView   = swapchainImages[swapchainImageIndex],
+            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
+            .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
+            .clearValue  = clearColor
+        };
+
     }
 
     // Exit with success, the cleanup stack will clean everything up

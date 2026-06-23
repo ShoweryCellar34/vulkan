@@ -45,7 +45,7 @@ VkPhysicalDevice* getVulkanPhysicalDevices(VkInstance instance, uint32_t* physic
     return physicalDevices;
 }
 
-uint32_t getVulkanPhysicalDeviceSuitability(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, const char** deviceExtensions, uint32_t deviceExtensionsCount, uint32_t* presentationQueueFamily, uint32_t* graphicsQueueFamily) {
+uint32_t getVulkanPhysicalDeviceSuitability(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, const char** deviceExtensions, uint32_t deviceExtensionsCount, uint32_t* graphicsQueueFamily, uint32_t* presentationQueueFamily) {
     // Create a variable to store the result of vulkan functions for error checking and reporting
     VkResult result = VK_SUCCESS;
 
@@ -126,9 +126,15 @@ uint32_t getVulkanPhysicalDeviceSuitability(VkPhysicalDevice physicalDevice, VkS
     // Add a cleanup callback to free the queue families array
     pushCleanupCallback(free, queueFamilies);
 
-    bool presentationQueueFamilyFound = false, graphicsQueueFamilyFound = false;
+    bool graphicsQueueFamilyFound = false, presentationQueueFamilyFound = false;
 
     for(uint32_t i = 0; i < queueFamilyCount; i++) {
+        // Check if the current queue family supports graphics
+        if(queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+            graphicsQueueFamilyFound = true;
+            *graphicsQueueFamily = i;
+        }
+
         // Check if the current queue family supports presentation
         VkBool32 presentationSupport = VK_FALSE;
         result = vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentationSupport);
@@ -141,14 +147,8 @@ uint32_t getVulkanPhysicalDeviceSuitability(VkPhysicalDevice physicalDevice, VkS
             *presentationQueueFamily = i;
         }
 
-        // Check if the current queue family supports graphics
-        if(queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-            graphicsQueueFamilyFound = true;
-            *graphicsQueueFamily = i;
-        }
-
         // If there is one queue family that supports both graphics and presentation we can exit the loop early as this is the best case scenario
-        if(presentationQueueFamilyFound == graphicsQueueFamilyFound) {
+        if(graphicsQueueFamilyFound == presentationQueueFamilyFound) {
             break;
         }
     }
@@ -156,9 +156,9 @@ uint32_t getVulkanPhysicalDeviceSuitability(VkPhysicalDevice physicalDevice, VkS
     popAndCallCleanupCallback(0);
 
     // If we haven't found every needed queue family on the same physical device we set the graphics and presentation queues to not found
-    if(presentationQueueFamilyFound == false || graphicsQueueFamilyFound == false) {
-        *presentationQueueFamily = 0;
+    if(graphicsQueueFamilyFound == false || presentationQueueFamilyFound == false) {
         *graphicsQueueFamily = 0;
+        *presentationQueueFamily = 0;
         return 0;
     }
 
@@ -166,7 +166,7 @@ uint32_t getVulkanPhysicalDeviceSuitability(VkPhysicalDevice physicalDevice, VkS
     uint32_t score = 1;
 
     // If there is one queue family that supports both graphics and presentation we add 1 the score
-    if(*presentationQueueFamily == *graphicsQueueFamily) {
+    if(*graphicsQueueFamily == *presentationQueueFamily) {
         score += 1;
     }
 
