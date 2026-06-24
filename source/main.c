@@ -16,6 +16,7 @@
 #include <extensions.h>
 #include <layers.h>
 #include <projectData.h>
+#include <window.h>
 
 #define WINDOW_WIDTH  800
 #define WINDOW_HEIGHT 450
@@ -36,13 +37,8 @@ DEFINE_CALLBACK_ARGS_3(vkDestroyShaderModule, VkDevice, VkShaderModule, const Vk
 DEFINE_CALLBACK_ARGS_3(vkDestroyPipelineLayout, VkDevice, VkPipelineLayout, const VkAllocationCallbacks*)
 DEFINE_CALLBACK_ARGS_3(vkDestroyPipeline, VkDevice, VkPipeline, const VkAllocationCallbacks*)
 DEFINE_CALLBACK_ARGS_3(vkDestroyCommandPool, VkDevice, VkCommandPool, const VkAllocationCallbacks*)
-
-void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)  {
-    window; key; scancode; action; mods;
-    if(key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)  {
-        glfwSetWindowShouldClose(window, GLFW_TRUE);
-    }
-}
+DEFINE_CALLBACK_ARGS_3(vkDestroySemaphore, VkDevice, VkSemaphore, const VkAllocationCallbacks*)
+DEFINE_CALLBACK_ARGS_3(vkDestroyFence, VkDevice, VkFence, const VkAllocationCallbacks*)
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(
     VkDebugUtilsMessageSeverityFlagBitsEXT      severity,
@@ -124,23 +120,9 @@ int main(int argc, char* argv[]) {
     }
     fprintf(stdout, "Vulkan supported minimally\n");
 
-    // Disable the creation of an OpenGL Context and disable window resizing
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-
-    // Create the window
-    GLFWwindow* window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, PROJECT_NAME, NULL, NULL);
-    if(window == NULL) {
-        const char* errorMessage = NULL;
-        int errorCode = glfwGetError(&errorMessage);
-        fprintf(stderr, "Failed to create GLFW window:\n    Error Code:    %i\n    Error Message: %s\n", errorCode, errorMessage);
-        return EXIT_FAILURE;
-    }
+    // Create the GLFW window
+    GLFWwindow* window = createGLFWWindow(PROJECT_NAME, WINDOW_WIDTH, WINDOW_HEIGHT);
     pushCleanupCallback(glfwDestroyWindow, window);
-    fprintf(stdout, "Created GLFW window\n");
-
-    // Set the kay callback for the window so we can capture keyboard events
-    glfwSetKeyCallback(window, keyCallback);
 
     // Create a variable to store the result of vulkan functions for error checking and reporting
     VkResult result = VK_SUCCESS;
@@ -148,7 +130,7 @@ int main(int argc, char* argv[]) {
     // Load the vulkan library and global-level vulkan functions
     result = volkInitialize();
     if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to load vulkan with volk: %i", result);
+        fprintf(stderr, "Failed to load vulkan with volk: %i\n", result);
         return EXIT_FAILURE;
     }
     PUSH_CLEANUP_ARGS_0(volkFinalize);
@@ -156,77 +138,15 @@ int main(int argc, char* argv[]) {
 
     // Get the extensions array and register its cleanup method
     uint32_t extensionsCount = 0;
-    const char** extensions = getVulkanExtensions(&extensionsCount, DEBUG_BUILD);
+    const char** extensions = getVulkanExtensionsAndValidate(&extensionsCount, DEBUG_BUILD);
     pushCleanupCallback(free, extensions);
-    fprintf(stdout, "Successfully got list of required extensions:\n");
 
-    // Print all the extensions we will use
-    for(uint32_t i = 0; i < extensionsCount; i++) {
-        fprintf(stdout, "    %s\n", extensions[i]);
-    }
-
-    // Get the supported extensions array and register its cleanup method
-    uint32_t supportedExtensionsCount = 0;
-    VkExtensionProperties* supportedExtensions = getSupportedVulkanExtensions(&supportedExtensionsCount);
-    pushCleanupCallback(free, supportedExtensions);
-    fprintf(stdout, "Successfully got list of supported extensions:\n");
-
-    // Print all the extensions supported
-    for(uint32_t i = 0; i < supportedExtensionsCount; i++) {
-        fprintf(stdout, "    %s\n", supportedExtensions[i].extensionName);
-    }
-
-    // Ensure all requested extensions are supported
-    for(uint32_t i = 0; i < extensionsCount; i++) {
-        bool extensionSupported = false;
-        for(uint32_t j = 0; j < supportedExtensionsCount; j++) {
-            if(!strcmp(extensions[i], supportedExtensions[j].extensionName)) {
-                extensionSupported = true;
-            }
-        }
-        if(extensionSupported == false) {
-            fprintf(stderr, "Not all requested extensions are supported\n");
-            exit(EXIT_FAILURE);
-        }
-    }
-    fprintf(stdout, "All required extensions are supported\n");
-
-    // Create the array of layers we will use
+    // Get the layers array and register its cleanup method
     uint32_t layersCount = 0;
-    const char** layers = getVulkanLayers(&layersCount, DEBUG_BUILD);
-    fprintf(stdout, "Successfully got list of required layers:\n");
+    const char** layers = getVulkanLayersAndValidate(&layersCount, DEBUG_BUILD);
+    pushCleanupCallback(free, layers);
 
-    // Print all the layers we will use
-    for(uint32_t i = 0; i < layersCount; i++) {
-        fprintf(stdout, "    %s\n", layers[i]);
-    }
-
-    // Get the supported layers array and register its cleanup method
-    uint32_t supportedLayersCount = 0;
-    VkLayerProperties* supportedLayers = getSupportedVulkanLayers(&supportedLayersCount);
-    pushCleanupCallback(free, supportedLayers);
-    fprintf(stdout, "Successfully got list of supported layers:\n");
-
-    // Print all the layers supported
-    for(uint32_t i = 0; i < supportedLayersCount; i++) {
-        fprintf(stdout, "    %s\n", supportedLayers[i].layerName);
-    }
-
-    // Ensure all requested layers are supported
-    for(uint32_t i = 0; i < layersCount; i++) {
-        bool layerSupported = false;
-        for(uint32_t j = 0; j < supportedLayersCount; j++) {
-            if(!strcmp(layers[i], supportedLayers[j].layerName)) {
-                layerSupported = true;
-            }
-        }
-        if(layerSupported == false) {
-            fprintf(stderr, "Not all requested layers are supported\n");
-            exit(EXIT_FAILURE);
-        }
-    }
-    fprintf(stdout, "All required layers are supported\n");
-
+    // Create a struct containing the settings for the debug messenger
     VkDebugUtilsMessengerCreateInfoEXT debugInfo = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
         .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
@@ -262,12 +182,14 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "Failed to create instance: %i\n", result);
         return EXIT_FAILURE;
     }
-    PUSH_CLEANUP_ARGS_2(vkDestroyInstance, instance, NULL);
     fprintf(stdout, "Created instance\n");
 
     // Load instance level vulkan functions
     volkLoadInstance(instance);
     fprintf(stdout, "Loaded instance level vulkan functions using volk\n");
+
+    // Push the instance destroy function, we do this after loading the instance functions with volk as the destroy function is instance level
+    PUSH_CLEANUP_ARGS_2(vkDestroyInstance, instance, NULL);
 
     // Create the debug callback if this is a debug build
     #if DEBUG_BUILD == 1
@@ -281,15 +203,9 @@ int main(int argc, char* argv[]) {
         fprintf(stdout, "Added vulkan debug callback\n");
     #endif
 
-    // Create the GLFW window surface
-    VkSurfaceKHR surface = VK_NULL_HANDLE;
-    result = glfwCreateWindowSurface(instance, window, NULL, &surface);
-    if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create surface for GLFW window: %i\n", result);
-        return EXIT_FAILURE;
-    }
+    // Create the window surface
+    VkSurfaceKHR surface = createGLFWWidnowSurface(instance, window);
     PUSH_CLEANUP_ARGS_3(vkDestroySurfaceKHR, instance, surface, NULL);
-    fprintf(stdout, "Created surface for GLFW window\n");
 
     // Get the device extensions array, it is static and does not need to be freed
     uint32_t deviceExtensionsCount = 0;
@@ -301,61 +217,27 @@ int main(int argc, char* argv[]) {
         fprintf(stdout, "    %s\n", deviceExtensions[i]);
     }
 
-    // Get the physical devices array and register its cleanup method
-    uint32_t physicalDevicesCount = 0;
-    VkPhysicalDevice* physicalDevices = getVulkanPhysicalDevices(instance, &physicalDevicesCount);
-    pushCleanupCallback(free, physicalDevices);
-    // Ensure there is atleast one physical device before continuing
-    if(physicalDevicesCount == 0) {
-        fprintf(stdout, "No physical devices supported\n");
-        exit(EXIT_FAILURE);
-    }
-    fprintf(stdout, "Successfully got list of physical devices:\n");
-
-    // Print all the physical devices supported
-    for(uint32_t i = 0; i < physicalDevicesCount; i++) {
-        VkPhysicalDeviceProperties physicalDeviceProperties;
-        vkGetPhysicalDeviceProperties(physicalDevices[i], &physicalDeviceProperties);
-        fprintf(stdout, "    %s\n", physicalDeviceProperties.deviceName);
-    }
-
-    // Create a handle for our selected physical device and create variables to store the index of our selected queue families and number of images in our swapchain
-    uint32_t highestScore = 0;
-    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-    uint32_t graphicsQueueFamily = 0, presentationQueueFamily = 0;
-
-    // Iterate through all physical devices and select the best one
-    for(uint32_t i = 0; i < physicalDevicesCount; i++) {
-        uint32_t tempGraphicsQueueFamily = 0, tempPresentationQueueFamily = 0;
-        uint32_t score = getVulkanPhysicalDeviceSuitability(physicalDevices[i], surface, deviceExtensions, deviceExtensionsCount, &tempPresentationQueueFamily, &tempGraphicsQueueFamily);
-        if(score > highestScore) {
-            highestScore = score;
-            physicalDevice = physicalDevices[i];
-            graphicsQueueFamily = tempGraphicsQueueFamily;
-            presentationQueueFamily = tempPresentationQueueFamily;
-        }
-    }
+    // Get the most suitable physical device
+    physicalDeviceAndConfiguration physicalDevice = getVulkanSuitablePhysicalDevice(instance, surface, deviceExtensions, deviceExtensionsCount);
 
     // Ensure we have a suitable physical device before preceding
-    if(physicalDevice == VK_NULL_HANDLE || highestScore == 0) {
+    if(physicalDevice.physicalDevice == VK_NULL_HANDLE) {
         fprintf(stdout, "Failed to find suitable physical device\n");
         exit(EXIT_FAILURE);
     }
 
     // Print the physical device we will use
-    VkPhysicalDeviceProperties2 physicalDeviceProperties = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2
-    };
-    vkGetPhysicalDeviceProperties2(physicalDevice, &physicalDeviceProperties);
+    VkPhysicalDeviceProperties physicalDeviceProperties;
+    vkGetPhysicalDeviceProperties(physicalDevice.physicalDevice, &physicalDeviceProperties);
     fprintf(
         stdout,
         "Using suitable physical device:\n    Name:                      %s\n    API Version:               %" PRIu32 ".%" PRIu32 ".%" PRIu32 "\n    Graphics Queue Family:     %" PRIu32 "\n    Presentation Queue Family: %" PRIu32 "\n",
-        physicalDeviceProperties.properties.deviceName,
-        VK_VERSION_MAJOR(physicalDeviceProperties.properties.apiVersion),
-        VK_VERSION_MINOR(physicalDeviceProperties.properties.apiVersion),
-        VK_VERSION_PATCH(physicalDeviceProperties.properties.apiVersion),
-        graphicsQueueFamily,
-        presentationQueueFamily
+        physicalDeviceProperties.deviceName,
+        VK_VERSION_MAJOR(physicalDeviceProperties.apiVersion),
+        VK_VERSION_MINOR(physicalDeviceProperties.apiVersion),
+        VK_VERSION_PATCH(physicalDeviceProperties.apiVersion),
+        physicalDevice.graphicsQueueFamilyIndex,
+        physicalDevice.presentationQueueFamilyIndex
     );
 
     // Add our the graphics and presentation queue families to an array
@@ -364,14 +246,14 @@ int main(int argc, char* argv[]) {
     uint32_t queueFamiliesCount = 0;
     queueFamilies[queueFamiliesCount++] = (VkDeviceQueueCreateInfo){
             .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-            .queueFamilyIndex = graphicsQueueFamily,
+            .queueFamilyIndex = physicalDevice.graphicsQueueFamilyIndex,
             .queueCount       = 1,
             .pQueuePriorities = &queuePriority,
         };
-    if(graphicsQueueFamily != presentationQueueFamily) {
+    if(physicalDevice.graphicsQueueFamilyIndex != physicalDevice.presentationQueueFamilyIndex) {
         queueFamilies[queueFamiliesCount++] = (VkDeviceQueueCreateInfo){
             .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-            .queueFamilyIndex = presentationQueueFamily,
+            .queueFamilyIndex = physicalDevice.presentationQueueFamilyIndex,
             .queueCount       = 1,
             .pQueuePriorities = &queuePriority,
         };
@@ -413,7 +295,7 @@ int main(int argc, char* argv[]) {
 
     // Create the logical device
     VkDevice device = VK_NULL_HANDLE;
-    result = vkCreateDevice(physicalDevice, &deviceInfo, NULL, &device);
+    result = vkCreateDevice(physicalDevice.physicalDevice, &deviceInfo, NULL, &device);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to create logical device: %i\n", result);
         return EXIT_FAILURE;
@@ -428,12 +310,12 @@ int main(int argc, char* argv[]) {
     // Get the the handles to the graphics and presentation queues
     VkQueue graphicsQueue = VK_NULL_HANDLE;
     VkQueue presentationQueue = VK_NULL_HANDLE;
-    vkGetDeviceQueue(device, graphicsQueueFamily, 0, &graphicsQueue);
-    vkGetDeviceQueue(device, presentationQueueFamily, 0, &presentationQueue);
+    vkGetDeviceQueue(device, physicalDevice.graphicsQueueFamilyIndex, 0, &graphicsQueue);
+    vkGetDeviceQueue(device, physicalDevice.presentationQueueFamilyIndex, 0, &presentationQueue);
 
     // Create a struct containing the settings for the VMA allocator
     VmaAllocatorCreateInfo allocatorCreateInfo = {
-        .physicalDevice = physicalDevice,
+        .physicalDevice = physicalDevice.physicalDevice,
         .device = device,
         .instance = instance,
         .vulkanApiVersion = VK_API_VERSION_1_4
@@ -460,7 +342,7 @@ int main(int argc, char* argv[]) {
 
     // Get the capabilities of the surface
     VkSurfaceCapabilitiesKHR surfaceCapabilities;
-    result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities);
+    result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice.physicalDevice, surface, &surfaceCapabilities);
     if(result != VK_SUCCESS) {
         fprintf(stdout, "Failed to get surface capabilities: %i\n", result);
         exit(EXIT_FAILURE);
@@ -505,10 +387,13 @@ int main(int argc, char* argv[]) {
     };
 
     // Change the image sharing mode in the swapchain create info struct
-    if(graphicsQueueFamily != presentationQueueFamily) {
+    if(physicalDevice.graphicsQueueFamilyIndex != physicalDevice.presentationQueueFamilyIndex) {
         swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
         swapchainCreateInfo.queueFamilyIndexCount = 2;
-        swapchainCreateInfo.pQueueFamilyIndices = (const uint32_t[]){graphicsQueueFamily, presentationQueueFamily};
+        swapchainCreateInfo.pQueueFamilyIndices = (const uint32_t[]){
+            physicalDevice.graphicsQueueFamilyIndex,
+            physicalDevice.presentationQueueFamilyIndex
+        };
     }
 
     // Create the swapchain
@@ -648,7 +533,7 @@ int main(int argc, char* argv[]) {
     VkShaderModule shaderModule = VK_NULL_HANDLE;
     result = vkCreateShaderModule(device, &shaderModuleCreateInfo, NULL, &shaderModule);
     if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create shader module %i\n", result);
+        fprintf(stderr, "Failed to create shader module: %i\n", result);
         exit(EXIT_FAILURE);
     }
     PUSH_CLEANUP_ARGS_3(vkDestroyShaderModule, device, shaderModule, NULL);
@@ -731,7 +616,7 @@ int main(int argc, char* argv[]) {
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
     result = vkCreatePipelineLayout(device, &pipelineLayoutInfo, NULL, &pipelineLayout);
     if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create graphics pipeline layout %i\n", result);
+        fprintf(stderr, "Failed to create graphics pipeline layout: %i\n", result);
         exit(EXIT_FAILURE);
     }
     PUSH_CLEANUP_ARGS_3(vkDestroyPipelineLayout, device, pipelineLayout, NULL);
@@ -762,7 +647,7 @@ int main(int argc, char* argv[]) {
     VkPipeline pipeline = VK_NULL_HANDLE;
     result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineCreateInfo, NULL, &pipeline);
     if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create graphics pipeline %i\n", result);
+        fprintf(stderr, "Failed to create graphics pipeline: %i\n", result);
         exit(EXIT_FAILURE);
     }
     PUSH_CLEANUP_ARGS_3(vkDestroyPipeline, device, pipeline, NULL);
@@ -771,23 +656,23 @@ int main(int argc, char* argv[]) {
     VkCommandPoolCreateInfo commandPoolCreateInfo = {
         .sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-        .queueFamilyIndex = graphicsQueueFamily
+        .queueFamilyIndex = physicalDevice.graphicsQueueFamilyIndex
     };
 
     VkCommandPool graphicsCommandPool = VK_NULL_HANDLE;
     VkCommandPool presentationCommandPool = VK_NULL_HANDLE;
     result = vkCreateCommandPool(device, &commandPoolCreateInfo, NULL, &graphicsCommandPool);
     if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create graphics command pool %i\n", result);
+        fprintf(stderr, "Failed to create graphics command pool: %i\n", result);
         exit(EXIT_FAILURE);
     }
     PUSH_CLEANUP_ARGS_3(vkDestroyCommandPool, device, graphicsCommandPool, NULL);
     fprintf(stdout, "Created graphics command pool\n");
 
-    if(graphicsQueueFamily != presentationQueueFamily) {
+    if(physicalDevice.graphicsQueueFamilyIndex != physicalDevice.presentationQueueFamilyIndex) {
         result = vkCreateCommandPool(device, &commandPoolCreateInfo, NULL, &presentationCommandPool);
         if(result != VK_SUCCESS) {
-            fprintf(stderr, "Failed to create presentation command pool %i\n", result);
+            fprintf(stderr, "Failed to create presentation command pool: %i\n", result);
             exit(EXIT_FAILURE);
         }
         PUSH_CLEANUP_ARGS_3(vkDestroyCommandPool, device, presentationCommandPool, NULL);
@@ -808,16 +693,16 @@ int main(int argc, char* argv[]) {
     VkCommandBuffer presentationCommandBuffer = VK_NULL_HANDLE;
     result = vkAllocateCommandBuffers(device, &commandBufferAllocationInfo, &graphicsCommandBuffer);
     if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to allocate graphics command buffer %i\n", result);
+        fprintf(stderr, "Failed to allocate graphics command buffer: %i\n", result);
         exit(EXIT_FAILURE);
     }
     fprintf(stdout, "Allocated graphics command buffer\n");
 
-    if(graphicsQueueFamily != presentationQueueFamily) {
+    if(physicalDevice.graphicsQueueFamilyIndex != physicalDevice.presentationQueueFamilyIndex) {
         commandBufferAllocationInfo.commandPool = presentationCommandPool;
         result = vkAllocateCommandBuffers(device, &commandBufferAllocationInfo, &presentationCommandBuffer);
         if(result != VK_SUCCESS) {
-            fprintf(stderr, "Failed to allocate presentation command buffer %i\n", result);
+            fprintf(stderr, "Failed to allocate presentation command buffer: %i\n", result);
             exit(EXIT_FAILURE);
         }
         fprintf(stdout, "Allocated presentation command buffer\n");
@@ -826,24 +711,84 @@ int main(int argc, char* argv[]) {
         fprintf(stdout, "Reusing graphics command buffer as presentation command buffer\n");
     }
 
+    VkSemaphoreCreateInfo semaphoreCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
+    };
+    VkFenceCreateInfo fenceCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        .flags = VK_FENCE_CREATE_SIGNALED_BIT
+    };
+
+    VkSemaphore presentCompleteSemaphore = VK_NULL_HANDLE;
+    VkSemaphore renderFinishedSemaphore  = VK_NULL_HANDLE;
+    VkFence     drawFence                = VK_NULL_HANDLE;
+
+    result = vkCreateSemaphore(device, &semaphoreCreateInfo, NULL, &presentCompleteSemaphore);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create presentation semaphore: %i\n", result);
+        exit(EXIT_FAILURE);
+    }
+    PUSH_CLEANUP_ARGS_3(vkDestroySemaphore, device, presentCompleteSemaphore, NULL);
+
+    result = vkCreateSemaphore(device, &semaphoreCreateInfo, NULL, &renderFinishedSemaphore);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create rendering semaphore: %i\n", result);
+        exit(EXIT_FAILURE);
+    }
+    PUSH_CLEANUP_ARGS_3(vkDestroySemaphore, device, renderFinishedSemaphore, NULL);
+
+    result = vkCreateFence(device, &fenceCreateInfo, NULL, &drawFence);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create draw fence: %i\n", result);
+        exit(EXIT_FAILURE);
+    }
+    PUSH_CLEANUP_ARGS_3(vkDestroyFence, device, drawFence, NULL);
+
+    fprintf(stdout, "Created essential semaphores/fences\n");
+
     // Main application loop
     while(!glfwWindowShouldClose(window)) {
+        // Poll for new inputs
         glfwPollEvents();
 
-        static uint32_t swapchainImageIndex = 0;
+        // Wait for previous frame to finish drawing
+        result = vkWaitForFences(device, 1, &drawFence, VK_TRUE, UINT64_MAX);
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Failed to wait for drawing fence: %i\n", result);
+            exit(EXIT_FAILURE);
+        }
+        result = vkResetFences(device, 1, &drawFence);
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Failed to reset drawing fence: %i\n", result);
+            exit(EXIT_FAILURE);
+        }
+
+        VkAcquireNextImageInfoKHR swapchainNextImageAcquisitionInfo = {
+            .sType     = VK_STRUCTURE_TYPE_ACQUIRE_NEXT_IMAGE_INFO_KHR,
+            .semaphore = presentCompleteSemaphore,
+            .swapchain = swapchain,
+            .timeout   = UINT64_MAX
+        };
+
+        uint32_t swapchainIndex = 0;
+        result = vkAcquireNextImage2KHR(device, &swapchainNextImageAcquisitionInfo, &swapchainIndex);
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Failed to acquire next swapchain image: %i\n", result);
+            exit(EXIT_FAILURE);
+        }
 
         VkCommandBufferBeginInfo graphicsCommandBufferBeginInfo = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
         };
         result = vkBeginCommandBuffer(graphicsCommandBuffer, &graphicsCommandBufferBeginInfo);
         if(result != VK_SUCCESS) {
-            fprintf(stderr, "Failed to begin graphics command buffer %i\n", result);
+            fprintf(stderr, "Failed to begin graphics command buffer: %i\n", result);
             exit(EXIT_FAILURE);
         }
 
         transitionImageLayout(
             graphicsCommandBuffer,
-            swapchainImages[swapchainImageIndex],
+            swapchainImages[swapchainIndex],
             VK_IMAGE_LAYOUT_UNDEFINED,
             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             0,
@@ -862,7 +807,7 @@ int main(int argc, char* argv[]) {
         };
         VkRenderingAttachmentInfo attachmentInfo = {
             .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView   = swapchainImageViews[swapchainImageIndex],
+            .imageView   = swapchainImageViews[swapchainIndex],
             .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
             .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
@@ -890,8 +835,8 @@ int main(int argc, char* argv[]) {
         VkViewport viewport = {
             0.0f,
             0.0f,
-            swapchainExtent.width,
-            swapchainExtent.height,
+            (float)swapchainExtent.width,
+            (float)swapchainExtent.height,
             0.0f,
             1.0f
         };
@@ -903,8 +848,8 @@ int main(int argc, char* argv[]) {
             swapchainExtent
         };
 
-        vkCmdSetViewport(graphicsCommandBuffer, 0, 0, &viewport);
-        vkCmdSetScissor(graphicsCommandBuffer, 0, 0, &scissor);
+        vkCmdSetViewport(graphicsCommandBuffer, 0, 1, &viewport);
+        vkCmdSetScissor(graphicsCommandBuffer, 0, 1, &scissor);
 
         vkCmdDraw(graphicsCommandBuffer, 3, 1, 0, 0);
 
@@ -912,24 +857,38 @@ int main(int argc, char* argv[]) {
 
         transitionImageLayout(
             graphicsCommandBuffer,
-            swapchainImages[swapchainImageIndex],
+            swapchainImages[swapchainIndex],
             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
             0,
-            0,
-            0,
-            0,
-            0
+            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT
         );
-        // transition_image_layout(
-        //     imageIndex,
-        //     vk::ImageLayout::eColorAttachmentOptimal,
-        //     vk::ImageLayout::ePresentSrcKHR,
-        //     vk::AccessFlagBits2::eColorAttachmentWrite,             // srcAccessMask
-        //     {},                                                     // dstAccessMask
-        //     vk::PipelineStageFlagBits2::eColorAttachmentOutput,     // srcStage
-        //     vk::PipelineStageFlagBits2::eBottomOfPipe               // dstStage
-        // );
+
+        result = vkEndCommandBuffer(graphicsCommandBuffer);
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Failed to end graphics command buffer: %i\n", result);
+            exit(EXIT_FAILURE);
+        }
+
+        VkPipelineStageFlags waitDestinationStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        const VkSubmitInfo submitInfo = {
+            .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .waitSemaphoreCount   = 1,
+            .pWaitSemaphores      = &presentCompleteSemaphore,
+            .pWaitDstStageMask    = &waitDestinationStageMask,
+            .commandBufferCount   = 1,
+            .pCommandBuffers      = &graphicsCommandBuffer,
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores    = &renderFinishedSemaphore
+        };
+
+        result = vkQueueSubmit(graphicsQueue, 1, &submitInfo, drawFence);
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Failed to submit graphics command buffer queue: %i\n", result);
+            exit(EXIT_FAILURE);
+        }
     }
 
     // Exit with success, the cleanup stack will clean everything up

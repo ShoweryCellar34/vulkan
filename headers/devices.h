@@ -10,13 +10,21 @@
 
 // Project Headers
 
+// This struct stores a vulkan physical device and the graphics and presentation queue family indicies
+typedef struct {
+    VkPhysicalDevice   physicalDevice;
+    uint32_t           graphicsQueueFamilyIndex;
+    uint32_t           presentationQueueFamilyIndex;
+    VkSurfaceFormatKHR format;
+} physicalDeviceAndConfiguration;
+
+// Get the most suitable vulkan physical device and return it and its configuration
+physicalDeviceAndConfiguration getVulkanSuitablePhysicalDevice(VkInstance instance, VkSurfaceKHR surface, const char** deviceExtensions, uint32_t deviceExtensionsCount);
+
 // Get the list of supported physical devices
 VkPhysicalDevice* getVulkanPhysicalDevices(VkInstance instance, uint32_t* physicalDevicesCount);
 
-// get the suitability of a physical device
-uint32_t getVulkanPhysicalDeviceSuitability(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, const char** deviceExtensions, uint32_t deviceExtensionsCount, uint32_t* graphicsQueueFamily, uint32_t* presentationQueueFamily);
-
-// Get the list of queue families supported by a physical device
-VkQueueFamilyProperties* getVulkanPhysicalDeviceQueueFamilies(VkPhysicalDevice physicalDevice, uint32_t* queueFamiliesCount);
+// Creates and return a vulkan logical device
+VkDevice createVulkanDevice(physicalDeviceAndConfiguration physicalDevice);
 
 #endif // DEVICES_H

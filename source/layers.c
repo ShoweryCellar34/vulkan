@@ -3,18 +3,68 @@
 // System Headers
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 // Library Headers
 
 // Project Headers
 #include <cleanup.h>
 
+const char** getVulkanLayersAndValidate(uint32_t* layersCount, bool debug) {
+    // Get the layers array
+    const char** layers = getVulkanLayers(layersCount, debug);
+    fprintf(stdout, "Successfully got list of required layers:\n");
+
+    // Print all the layers we will use
+    for(uint32_t i = 0; i < *layersCount; i++) {
+        fprintf(stdout, "    %s\n", layers[i]);
+    }
+
+    // Get the supported layers array
+    uint32_t supportedLayersCount = 0;
+    VkLayerProperties* supportedLayers = getSupportedVulkanLayers(&supportedLayersCount);
+    fprintf(stdout, "Successfully got list of supported layers:\n");
+
+    // Print all the layers supported
+    for(uint32_t i = 0; i < supportedLayersCount; i++) {
+        fprintf(stdout, "    %s\n", supportedLayers[i].layerName);
+    }
+
+    // Ensure all requested layers are supported
+    for(uint32_t i = 0; i < *layersCount; i++) {
+        bool layerSupported = false;
+        for(uint32_t j = 0; j < supportedLayersCount; j++) {
+            if(!strcmp(layers[i], supportedLayers[j].layerName)) {
+                layerSupported = true;
+            }
+        }
+        if(layerSupported == false) {
+            fprintf(stderr, "Not all requested layers are supported\n");
+            free(supportedLayers);
+            exit(EXIT_FAILURE);
+        }
+    }
+    fprintf(stdout, "All required layers are supported\n");
+
+    // Free the supported layers array
+    free(supportedLayers);
+
+    // Return the list of layers
+    return layers;
+}
+
 const char** getVulkanLayers(uint32_t* layersCount, bool debug) {
-    static const char* layers[] = {
-        "VK_LAYER_KHRONOS_validation"
-    };
-    *layersCount = debug ? sizeof(layers) / sizeof(*layers) : 0;
-    return debug ? layers : NULL;
+    // If we are in debug build return the khronos validation layer, and if e are not in a debug build we return NULL and set layer count to 1 and 0 respectively
+    if(debug) {
+        static const char* layers[] = {
+            "VK_LAYER_KHRONOS_validation"
+        };
+        *layersCount = sizeof(layers) / sizeof(*layers);
+        return layers;
+    } else {
+        *layersCount = 0;
+        return NULL;
+    }
 }
 
 VkLayerProperties* getSupportedVulkanLayers(uint32_t* supportedLayersCount) {

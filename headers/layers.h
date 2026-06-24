@@ -11,6 +11,9 @@
 
 // Project Headers
 
+// Get the list of vulkan layers and validate them
+const char** getVulkanLayersAndValidate(uint32_t* layersCount, bool debug);
+
 // Get the list of layers we are going to use
 const char** getVulkanLayers(uint32_t* layersCount, bool debug);
 

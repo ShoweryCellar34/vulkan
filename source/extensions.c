@@ -12,6 +12,49 @@
 
 // Project Headers
 
+const char** getVulkanExtensionsAndValidate(uint32_t* extensionsCount, bool debug) {
+    // Get the extensions array
+    const char** extensions = getVulkanExtensions(extensionsCount, debug);
+    fprintf(stdout, "Successfully got list of required extensions:\n");
+
+    // Print all the extensions we will use
+    for(uint32_t i = 0; i < *extensionsCount; i++) {
+        fprintf(stdout, "    %s\n", extensions[i]);
+    }
+
+    // Get the supported extensions array and register its cleanup method
+    uint32_t supportedExtensionsCount = 0;
+    VkExtensionProperties* supportedExtensions = getSupportedVulkanExtensions(&supportedExtensionsCount);
+    fprintf(stdout, "Successfully got list of supported extensions:\n");
+
+    // Print all the extensions supported
+    for(uint32_t i = 0; i < supportedExtensionsCount; i++) {
+        fprintf(stdout, "    %s\n", supportedExtensions[i].extensionName);
+    }
+
+    // Ensure all requested extensions are supported
+    for(uint32_t i = 0; i < *extensionsCount; i++) {
+        bool extensionSupported = false;
+        for(uint32_t j = 0; j < supportedExtensionsCount; j++) {
+            if(!strcmp(extensions[i], supportedExtensions[j].extensionName)) {
+                extensionSupported = true;
+            }
+        }
+        if(extensionSupported == false) {
+            fprintf(stderr, "Not all requested extensions are supported\n");
+            free(supportedExtensions);
+            exit(EXIT_FAILURE);
+        }
+    }
+    fprintf(stdout, "All required extensions are supported\n");
+
+    // Free the supported extensions array
+    free(supportedExtensions);
+
+    // Return the list of extensions
+    return extensions;
+}
+
 const char** getVulkanExtensions(uint32_t* extensionsCount, bool debug) {
     // Declare the variable to store the extensions array
     const char** extensions = NULL;
@@ -75,31 +118,10 @@ VkExtensionProperties* getSupportedVulkanExtensions(uint32_t* supportedExtension
     return supportedExtensions;
 }
 
-VkQueueFamilyProperties* getVulkanPhysicalDeviceQueueFamilies(VkPhysicalDevice physicalDevice, uint32_t* queueFamiliesCount) {
-    // Get the length of the supported queue families array
-    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, queueFamiliesCount, NULL);
-    if(*queueFamiliesCount == 0) {
-        return NULL;
-    }
-
-    // Allocate the supported physical devices array
-    VkQueueFamilyProperties* queueFamilies = malloc(sizeof(VkQueueFamilyProperties) * *queueFamiliesCount);
-    if(queueFamilies == NULL) {
-        fprintf(stderr, "Failed to allocate supported queue families array of size %zu\n", *queueFamiliesCount * sizeof(VkQueueFamilyProperties));
-        exit(EXIT_FAILURE);
-    }
-
-    // Fill the supported queue families array with the list of supported queue families for the physical device
-    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, queueFamiliesCount, queueFamilies);
-
-    return queueFamilies;
-}
-
-static const char* deviceExtensions[] = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME
-};
-
 const char** getVulkanDeviceExtensions(uint32_t* deviceExtensionsCount) {
+    static const char* deviceExtensions[] = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME
+    };
     *deviceExtensionsCount = sizeof(deviceExtensions) / sizeof(*deviceExtensions);
     return deviceExtensions;
 }

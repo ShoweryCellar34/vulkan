@@ -19,6 +19,7 @@ set(SOURCES
     source/extensions.c
     source/layers.c
     source/main.c
+    source/window.c
 )
 add_executable(${PROJECT_NAME} ${SOURCES})
 

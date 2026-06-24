@@ -11,6 +11,9 @@
 
 // Project Headers
 
+// Get the list of vulkan extensions and validate them
+const char** getVulkanExtensionsAndValidate(uint32_t* extensionsCount, bool debug);
+
 // Get the list of extensions we are going to use
 const char** getVulkanExtensions(uint32_t* extensionsCount, bool debug);
 
