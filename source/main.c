@@ -66,6 +66,7 @@ void transitionImageLayout(
     VkPipelineStageFlags2   dstStageMask
 ) {
     VkImageMemoryBarrier2 barrier = {
+        .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
         .srcStageMask        = srcStageMask,
         .srcAccessMask       = srcAccessMask,
         .dstStageMask        = dstStageMask,
@@ -84,6 +85,7 @@ void transitionImageLayout(
         }
     };
     VkDependencyInfo dependencyInfo = {
+        .sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
         .imageMemoryBarrierCount = 1,
         .pImageMemoryBarriers    = &barrier
     };
@@ -387,11 +389,12 @@ int main(int argc, char* argv[]) {
     VkPhysicalDeviceVulkan13Features enabledDeviceFeatures_1_3 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
         .pNext = &enabledDeviceFeatures_1_2,
-        .dynamicRendering = VK_TRUE
+        .dynamicRendering = VK_TRUE,
+        .synchronization2 = VK_TRUE
     };
     VkPhysicalDeviceVulkan14Features enabledDeviceFeatures_1_4 = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
-        .pNext = &enabledDeviceFeatures_1_3
+        .sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
+        .pNext            = &enabledDeviceFeatures_1_3
     };
     VkPhysicalDeviceFeatures2 enabledDeviceFeatures = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
@@ -838,7 +841,6 @@ int main(int argc, char* argv[]) {
             exit(EXIT_FAILURE);
         }
 
-        // Before starting rendering, transition the swapchain image to vk::ImageLayout::eColorAttachmentOptimal
         transitionImageLayout(
             graphicsCommandBuffer,
             swapchainImages[swapchainImageIndex],
@@ -860,13 +862,74 @@ int main(int argc, char* argv[]) {
         };
         VkRenderingAttachmentInfo attachmentInfo = {
             .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView   = swapchainImages[swapchainImageIndex],
+            .imageView   = swapchainImageViews[swapchainImageIndex],
             .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
             .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
             .clearValue  = clearColor
         };
 
+        VkRenderingInfo renderingInfo = {
+            .sType                = VK_STRUCTURE_TYPE_RENDERING_INFO,
+            .renderArea           = {
+                .offset = {
+                    0,
+                    0
+                },
+                .extent = swapchainExtent
+            },
+            .layerCount           = 1,
+            .colorAttachmentCount = 1,
+            .pColorAttachments    = &attachmentInfo
+        };
+
+        vkCmdBeginRendering(graphicsCommandBuffer, &renderingInfo);
+
+        vkCmdBindPipeline(graphicsCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+
+        VkViewport viewport = {
+            0.0f,
+            0.0f,
+            swapchainExtent.width,
+            swapchainExtent.height,
+            0.0f,
+            1.0f
+        };
+        VkRect2D scissor = {
+            {
+                0,
+                0
+            },
+            swapchainExtent
+        };
+
+        vkCmdSetViewport(graphicsCommandBuffer, 0, 0, &viewport);
+        vkCmdSetScissor(graphicsCommandBuffer, 0, 0, &scissor);
+
+        vkCmdDraw(graphicsCommandBuffer, 3, 1, 0, 0);
+
+        vkCmdEndRendering(graphicsCommandBuffer);
+
+        transitionImageLayout(
+            graphicsCommandBuffer,
+            swapchainImages[swapchainImageIndex],
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            0,
+            0,
+            0,
+            0,
+            0
+        );
+        // transition_image_layout(
+        //     imageIndex,
+        //     vk::ImageLayout::eColorAttachmentOptimal,
+        //     vk::ImageLayout::ePresentSrcKHR,
+        //     vk::AccessFlagBits2::eColorAttachmentWrite,             // srcAccessMask
+        //     {},                                                     // dstAccessMask
+        //     vk::PipelineStageFlagBits2::eColorAttachmentOutput,     // srcStage
+        //     vk::PipelineStageFlagBits2::eBottomOfPipe               // dstStage
+        // );
     }
 
     // Exit with success, the cleanup stack will clean everything up
