@@ -137,14 +137,12 @@ int main(int argc, char* argv[]) {
     fprintf(stdout, "Loaded global level vulkan functions using volk\n");
 
     // Get the extensions array and register its cleanup method
-    uint32_t extensionsCount = 0;
-    const char** extensions = getVulkanExtensionsAndValidate(&extensionsCount, DEBUG_BUILD);
-    pushCleanupCallback(free, extensions);
+    extensionNames extensions = getVulkanExtensionsAndValidate(DEBUG_BUILD);
+    pushCleanupCallback(free, extensions.names);
 
     // Get the layers array and register its cleanup method
-    uint32_t layersCount = 0;
-    const char** layers = getVulkanLayersAndValidate(&layersCount, DEBUG_BUILD);
-    pushCleanupCallback(free, layers);
+    layerNames layers = getVulkanLayersAndValidate(DEBUG_BUILD);
+    pushCleanupCallback(free, layers.names);
 
     // Create a struct containing the settings for the debug messenger
     VkDebugUtilsMessengerCreateInfoEXT debugInfo = {
@@ -169,10 +167,10 @@ int main(int argc, char* argv[]) {
         .sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pNext                   = &debugInfo,
         .pApplicationInfo        = &applicationInfo,
-        .enabledLayerCount       = layersCount,
-        .ppEnabledLayerNames     = layers,
-        .enabledExtensionCount   = extensionsCount,
-        .ppEnabledExtensionNames = extensions
+        .enabledLayerCount       = layers.count,
+        .ppEnabledLayerNames     = layers.names,
+        .enabledExtensionCount   = extensions.count,
+        .ppEnabledExtensionNames = extensions.names
     };
 
     // Create the instance
@@ -208,17 +206,16 @@ int main(int argc, char* argv[]) {
     PUSH_CLEANUP_ARGS_3(vkDestroySurfaceKHR, instance, surface, NULL);
 
     // Get the device extensions array, it is static and does not need to be freed
-    uint32_t deviceExtensionsCount = 0;
-    const char** deviceExtensions = getVulkanDeviceExtensions(&deviceExtensionsCount);
+    extensionNames deviceExtensions = getVulkanDeviceExtensions();
     fprintf(stdout, "Successfully got list of required device extensions:\n");
 
     // Print all the device extensions we will use
-    for(uint32_t i = 0; i < deviceExtensionsCount; i++) {
-        fprintf(stdout, "    %s\n", deviceExtensions[i]);
+    for(uint32_t i = 0; i < deviceExtensions.count; i++) {
+        fprintf(stdout, "    %s\n", deviceExtensions.names[i]);
     }
 
     // Get the most suitable physical device
-    physicalDeviceAndConfiguration physicalDevice = getVulkanSuitablePhysicalDevice(instance, surface, deviceExtensions, deviceExtensionsCount);
+    physicalDeviceAndConfiguration physicalDevice = getVulkanSuitablePhysicalDevice(instance, surface, deviceExtensions);
 
     // Ensure we have a suitable physical device before preceding
     if(physicalDevice.physicalDevice == VK_NULL_HANDLE) {
@@ -226,86 +223,12 @@ int main(int argc, char* argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    // Print the physical device we will use
-    VkPhysicalDeviceProperties physicalDeviceProperties;
-    vkGetPhysicalDeviceProperties(physicalDevice.physicalDevice, &physicalDeviceProperties);
-    fprintf(
-        stdout,
-        "Using suitable physical device:\n    Name:                      %s\n    API Version:               %" PRIu32 ".%" PRIu32 ".%" PRIu32 "\n    Graphics Queue Family:     %" PRIu32 "\n    Presentation Queue Family: %" PRIu32 "\n",
-        physicalDeviceProperties.deviceName,
-        VK_VERSION_MAJOR(physicalDeviceProperties.apiVersion),
-        VK_VERSION_MINOR(physicalDeviceProperties.apiVersion),
-        VK_VERSION_PATCH(physicalDeviceProperties.apiVersion),
-        physicalDevice.graphicsQueueFamilyIndex,
-        physicalDevice.presentationQueueFamilyIndex
-    );
-
-    // Add our the graphics and presentation queue families to an array
-    float queuePriority = 1.0f;
-    VkDeviceQueueCreateInfo queueFamilies[2];
-    uint32_t queueFamiliesCount = 0;
-    queueFamilies[queueFamiliesCount++] = (VkDeviceQueueCreateInfo){
-            .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-            .queueFamilyIndex = physicalDevice.graphicsQueueFamilyIndex,
-            .queueCount       = 1,
-            .pQueuePriorities = &queuePriority,
-        };
-    if(physicalDevice.graphicsQueueFamilyIndex != physicalDevice.presentationQueueFamilyIndex) {
-        queueFamilies[queueFamiliesCount++] = (VkDeviceQueueCreateInfo){
-            .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-            .queueFamilyIndex = physicalDevice.presentationQueueFamilyIndex,
-            .queueCount       = 1,
-            .pQueuePriorities = &queuePriority,
-        };
-    }
-
-    // List the features we want our logical device to have
-    VkPhysicalDeviceVulkan11Features enabledDeviceFeatures_1_1 = {
-        .sType                = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
-        .shaderDrawParameters = VK_TRUE
-    };
-    VkPhysicalDeviceVulkan12Features enabledDeviceFeatures_1_2 = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-        .pNext = &enabledDeviceFeatures_1_1
-    };
-    VkPhysicalDeviceVulkan13Features enabledDeviceFeatures_1_3 = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-        .pNext = &enabledDeviceFeatures_1_2,
-        .dynamicRendering = VK_TRUE,
-        .synchronization2 = VK_TRUE
-    };
-    VkPhysicalDeviceVulkan14Features enabledDeviceFeatures_1_4 = {
-        .sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
-        .pNext            = &enabledDeviceFeatures_1_3
-    };
-    VkPhysicalDeviceFeatures2 enabledDeviceFeatures = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-        .pNext = &enabledDeviceFeatures_1_4
-    };
-
-    // Create a struct containing the settings for the logical device
-    VkDeviceCreateInfo deviceInfo = {
-        .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pNext = &enabledDeviceFeatures,
-        .queueCreateInfoCount = queueFamiliesCount,
-        .pQueueCreateInfos = queueFamilies,
-        .enabledExtensionCount = deviceExtensionsCount,
-        .ppEnabledExtensionNames = deviceExtensions
-    };
-
     // Create the logical device
-    VkDevice device = VK_NULL_HANDLE;
-    result = vkCreateDevice(physicalDevice.physicalDevice, &deviceInfo, NULL, &device);
-    if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create logical device: %i\n", result);
-        return EXIT_FAILURE;
-    }
+    VkDevice device = createVulkanDevice(physicalDevice, deviceExtensions);
     PUSH_CLEANUP_ARGS_2(vkDestroyDevice, device, NULL);
-    fprintf(stdout, "Created logical device\n");
 
     // Load device level vulkan functions
     volkLoadDevice(device);
-    fprintf(stdout, "Loaded device level vulkan functions using volk\n");
 
     // Get the the handles to the graphics and presentation queues
     VkQueue graphicsQueue = VK_NULL_HANDLE;
@@ -363,19 +286,13 @@ int main(int argc, char* argv[]) {
         swapchainExtent = surfaceCapabilities.currentExtent;
     }
 
-    // Define the surface format we will use
-    VkSurfaceFormatKHR swapchainFormat = {
-        .format     = VK_FORMAT_B8G8R8A8_SRGB,
-        .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
-    };
-
     // Create a struct containing the settings for the swapchain
     VkSwapchainCreateInfoKHR swapchainCreateInfo = {
         .sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .surface          = surface,
         .minImageCount    = swapchainImageCount,
-        .imageFormat      = swapchainFormat.format,
-        .imageColorSpace  = swapchainFormat.colorSpace,
+        .imageFormat      = physicalDevice.format.format,
+        .imageColorSpace  = physicalDevice.format.colorSpace,
         .imageExtent      = swapchainExtent,
         .imageArrayLayers = 1,
         .imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
@@ -433,7 +350,7 @@ int main(int argc, char* argv[]) {
     VkImageViewCreateInfo swapchainImageViewsCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .viewType = VK_IMAGE_VIEW_TYPE_2D,
-        .format = swapchainFormat.format,
+        .format = physicalDevice.format.format,
         .components = {
             VK_COMPONENT_SWIZZLE_IDENTITY,
             VK_COMPONENT_SWIZZLE_IDENTITY,
@@ -625,7 +542,7 @@ int main(int argc, char* argv[]) {
     VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo = {
         .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
         .colorAttachmentCount = 1,
-        .pColorAttachmentFormats = &swapchainFormat.format
+        .pColorAttachmentFormats = &physicalDevice.format.format
     };
 
     VkGraphicsPipelineCreateInfo pipelineCreateInfo = {
@@ -764,10 +681,11 @@ int main(int argc, char* argv[]) {
         }
 
         VkAcquireNextImageInfoKHR swapchainNextImageAcquisitionInfo = {
-            .sType     = VK_STRUCTURE_TYPE_ACQUIRE_NEXT_IMAGE_INFO_KHR,
-            .semaphore = presentCompleteSemaphore,
-            .swapchain = swapchain,
-            .timeout   = UINT64_MAX
+            .sType      = VK_STRUCTURE_TYPE_ACQUIRE_NEXT_IMAGE_INFO_KHR,
+            .semaphore  = presentCompleteSemaphore,
+            .swapchain  = swapchain,
+            .timeout    = UINT64_MAX,
+            .deviceMask = 0x1
         };
 
         uint32_t swapchainIndex = 0;

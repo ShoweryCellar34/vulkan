@@ -11,19 +11,31 @@
 
 // Project Headers
 
+// This struct stores an array of vulkan extension names and the number of them
+typedef struct {
+    const char** names;
+    uint32_t     count;
+} extensionNames;
+
+// This struct stores an array of vulkan extension properties and the number of them
+typedef struct {
+    VkExtensionProperties* properties;
+    uint32_t               count;
+} extensionProperties;
+
 // Get the list of vulkan extensions and validate them
-const char** getVulkanExtensionsAndValidate(uint32_t* extensionsCount, bool debug);
+extensionNames getVulkanExtensionsAndValidate(bool debug);
 
 // Get the list of extensions we are going to use
-const char** getVulkanExtensions(uint32_t* extensionsCount, bool debug);
+extensionNames getVulkanExtensions(bool debug);
 
 // Get the list of supported extensions
-VkExtensionProperties* getSupportedVulkanExtensions(uint32_t* supportedExtensionsCount);
+extensionProperties getSupportedVulkanExtensions();
 
 // Get the list of device extensions we are going to use
-const char** getVulkanDeviceExtensions(uint32_t* deviceExtensionsCount);
+extensionNames getVulkanDeviceExtensions();
 
 // Get the list of supported device extensions
-VkExtensionProperties* getSupportedVulkanDeviceExtensions(VkPhysicalDevice physicalDevice, uint32_t* supportedDeviceExtensionsCount);
+extensionProperties getSupportedVulkanDeviceExtensions(VkPhysicalDevice physicalDevice);
 
 #endif // EXTENSIONS_H

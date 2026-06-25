@@ -1,6 +1,7 @@
 #include <devices.h>
 
 // System Headers
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,12 +11,8 @@
 
 // Project Headers
 #include <cleanup.h>
-#include <extensions.h>
 
-uint32_t getVulkanPhysicalDeviceSuitability(physicalDeviceAndConfiguration* physicalDevice, VkSurfaceKHR surface, const char** deviceExtensions, uint32_t deviceExtensionsCount) {
-    // Create a variable to store the result of vulkan functions for error checking and reporting
-    VkResult result = VK_SUCCESS;
-
+uint32_t getVulkanPhysicalDeviceSuitability(physicalDeviceAndConfiguration* physicalDevice, VkSurfaceKHR surface, extensionNames deviceExtensions) {
     // get the properties of the physical device we are currently checking
     VkPhysicalDeviceProperties physicalDeviceProperties;
     vkGetPhysicalDeviceProperties(physicalDevice->physicalDevice, &physicalDeviceProperties);
@@ -27,7 +24,7 @@ uint32_t getVulkanPhysicalDeviceSuitability(physicalDeviceAndConfiguration* phys
 
     // Get the length of the supported surface formats array
     uint32_t surfaceFormatsCount = 0;
-    result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice->physicalDevice, surface, &surfaceFormatsCount, NULL);
+    VkResult result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice->physicalDevice, surface, &surfaceFormatsCount, NULL);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to get number of supported surface formats: %i\n", result);
         exit(EXIT_FAILURE);
@@ -67,14 +64,13 @@ uint32_t getVulkanPhysicalDeviceSuitability(physicalDeviceAndConfiguration* phys
     }
 
     // Get the supported device extensions array and register its cleanup method
-    uint32_t supportedDeviceExtensionsCount = 0;
-    VkExtensionProperties* supportedDeviceExtensions = getSupportedVulkanDeviceExtensions(physicalDevice->physicalDevice, &supportedDeviceExtensionsCount);
+    extensionProperties supportedDeviceExtensions = getSupportedVulkanDeviceExtensions(physicalDevice->physicalDevice);
 
     // Ensure all requested device extensions are supported
-    for(uint32_t i = 0; i < deviceExtensionsCount; i++) {
+    for(uint32_t i = 0; i < deviceExtensions.count; i++) {
         bool deviceExtensionSupported = false;
-        for(uint32_t j = 0; j < supportedDeviceExtensionsCount; j++) {
-            if(!strcmp(deviceExtensions[i], supportedDeviceExtensions[j].extensionName)) {
+        for(uint32_t j = 0; j < supportedDeviceExtensions.count; j++) {
+            if(!strcmp(deviceExtensions.names[i], supportedDeviceExtensions.properties[j].extensionName)) {
                 deviceExtensionSupported = true;
             }
         }
@@ -83,7 +79,7 @@ uint32_t getVulkanPhysicalDeviceSuitability(physicalDeviceAndConfiguration* phys
         }
     }
     // Free the supported device extensions array because we don't need it anymore
-    free(supportedDeviceExtensions);
+    free(supportedDeviceExtensions.properties);
 
     // Get the length of the supported queue families array
     uint32_t queueFamiliesCount = 0;
@@ -155,7 +151,7 @@ uint32_t getVulkanPhysicalDeviceSuitability(physicalDeviceAndConfiguration* phys
     return score;
 }
 
-physicalDeviceAndConfiguration getVulkanSuitablePhysicalDevice(VkInstance instance, VkSurfaceKHR surface, const char** deviceExtensions, uint32_t deviceExtensionsCount) {
+physicalDeviceAndConfiguration getVulkanSuitablePhysicalDevice(VkInstance instance, VkSurfaceKHR surface, extensionNames deviceExtensions) {
     // Get the physical devices array and register its cleanup method
     uint32_t physicalDevicesCount = 0;
     VkPhysicalDevice* physicalDevices = getVulkanPhysicalDevices(instance, &physicalDevicesCount);
@@ -185,7 +181,7 @@ physicalDeviceAndConfiguration getVulkanSuitablePhysicalDevice(VkInstance instan
         physicalDeviceAndConfiguration tempPhysicalDevice = {
             .physicalDevice         = physicalDevices[i]
         };
-        uint32_t score = getVulkanPhysicalDeviceSuitability(&tempPhysicalDevice, surface, deviceExtensions, deviceExtensionsCount);
+        uint32_t score = getVulkanPhysicalDeviceSuitability(&tempPhysicalDevice, surface, deviceExtensions);
         if(score > highestScore) {
             highestScore = score;
             mostSuitablePhysicalDevice = tempPhysicalDevice;
@@ -200,11 +196,8 @@ physicalDeviceAndConfiguration getVulkanSuitablePhysicalDevice(VkInstance instan
 }
 
 VkPhysicalDevice* getVulkanPhysicalDevices(VkInstance instance, uint32_t* physicalDevicesCount) {
-    // Create a variable to store the result of vulkan functions for error checking and reporting
-    VkResult result = VK_SUCCESS;
-
     // Get the length of the supported physical devices array
-    result = vkEnumeratePhysicalDevices(instance, physicalDevicesCount, NULL);
+    VkResult result = vkEnumeratePhysicalDevices(instance, physicalDevicesCount, NULL);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to get number of supported physical devices: %i\n", result);
         exit(EXIT_FAILURE);
@@ -232,6 +225,87 @@ VkPhysicalDevice* getVulkanPhysicalDevices(VkInstance instance, uint32_t* physic
     return physicalDevices;
 }
 
-VkDevice createVulkanDevice(physicalDeviceAndConfiguration physicalDevice) {
-    
+VkDevice createVulkanDevice(physicalDeviceAndConfiguration physicalDevice, extensionNames deviceExtensions) {
+    // Print the physical device we will use
+    VkPhysicalDeviceProperties physicalDeviceProperties;
+    vkGetPhysicalDeviceProperties(physicalDevice.physicalDevice, &physicalDeviceProperties);
+    fprintf(
+        stdout,
+        "Creating logical device from physical device:\n    Name:                      %s\n    API Version:               %" PRIu32 ".%" PRIu32 ".%" PRIu32 "\n    Graphics Queue Family:     %" PRIu32 "\n    Presentation Queue Family: %" PRIu32 "\n",
+        physicalDeviceProperties.deviceName,
+        VK_VERSION_MAJOR(physicalDeviceProperties.apiVersion),
+        VK_VERSION_MINOR(physicalDeviceProperties.apiVersion),
+        VK_VERSION_PATCH(physicalDeviceProperties.apiVersion),
+        physicalDevice.graphicsQueueFamilyIndex,
+        physicalDevice.presentationQueueFamilyIndex
+    );
+
+    // Add our the graphics and presentation queue families to an array
+    float queuePriority = 1.0f;
+    VkDeviceQueueCreateInfo queueFamilies[2];
+    uint32_t queueFamiliesCount = 0;
+    queueFamilies[queueFamiliesCount++] = (VkDeviceQueueCreateInfo){
+            .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            .queueFamilyIndex = physicalDevice.graphicsQueueFamilyIndex,
+            .queueCount       = 1,
+            .pQueuePriorities = &queuePriority,
+        };
+    if(physicalDevice.graphicsQueueFamilyIndex != physicalDevice.presentationQueueFamilyIndex) {
+        queueFamilies[queueFamiliesCount++] = (VkDeviceQueueCreateInfo){
+            .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            .queueFamilyIndex = physicalDevice.presentationQueueFamilyIndex,
+            .queueCount       = 1,
+            .pQueuePriorities = &queuePriority,
+        };
+    }
+
+    // List the features we want our logical device to have
+    VkPhysicalDeviceVulkan11Features enabledDeviceFeatures_1_1 = {
+        .sType                = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+        .shaderDrawParameters = VK_TRUE
+    };
+    VkPhysicalDeviceVulkan12Features enabledDeviceFeatures_1_2 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+        .pNext = &enabledDeviceFeatures_1_1
+    };
+    VkPhysicalDeviceVulkan13Features enabledDeviceFeatures_1_3 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+        .pNext = &enabledDeviceFeatures_1_2,
+        .dynamicRendering = VK_TRUE,
+        .synchronization2 = VK_TRUE
+    };
+    VkPhysicalDeviceVulkan14Features enabledDeviceFeatures_1_4 = {
+        .sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
+        .pNext            = &enabledDeviceFeatures_1_3
+    };
+    VkPhysicalDeviceFeatures2 enabledDeviceFeatures = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+        .pNext = &enabledDeviceFeatures_1_4
+    };
+
+    // Create a struct containing the settings for the logical device
+    VkDeviceCreateInfo deviceInfo = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .pNext = &enabledDeviceFeatures,
+        .queueCreateInfoCount = queueFamiliesCount,
+        .pQueueCreateInfos = queueFamilies,
+        .enabledExtensionCount = deviceExtensions.count,
+        .ppEnabledExtensionNames = deviceExtensions.names
+    };
+
+    // Create the logical device
+    VkDevice device = VK_NULL_HANDLE;
+    VkResult result = vkCreateDevice(physicalDevice.physicalDevice, &deviceInfo, NULL, &device);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create logical device: %i\n", result);
+        exit(EXIT_FAILURE);
+    }
+    fprintf(stdout, "Created logical device\n");
+
+    // Load device level vulkan functions
+    volkLoadDevice(device);
+    fprintf(stdout, "Loaded device level vulkan functions using volk\n");
+
+    // Return the logical device
+    return device;
 }
