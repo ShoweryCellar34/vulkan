@@ -88,6 +88,64 @@ void transitionImageLayout(
     vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
 }
 
+VkInstance createVulkanInstance(const char* name, uint32_t version, extensionNames extensions, layerNames layers, bool debug, VkDebugUtilsMessengerEXT* debugMessenger) {
+    // Create a struct containing the settings for the debug messenger
+    VkDebugUtilsMessengerCreateInfoEXT debugInfo = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+        .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+        .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+        .pfnUserCallback = vulkanDebugCallback
+    };
+
+    // Create a struct containing the settings for the application
+    VkApplicationInfo applicationInfo = {
+        .sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+        .pApplicationName   = name,
+        .applicationVersion = version,
+        .pEngineName        = "No Engine",
+        .engineVersion      = VK_MAKE_VERSION(0, 0, 0),
+        .apiVersion         = VK_API_VERSION_1_4
+    };
+
+    // Create a struct containing the settings for the instance
+    VkInstanceCreateInfo instanceInfo = {
+        .sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+        .pNext                   = debug == true ? &debugInfo : NULL,
+        .pApplicationInfo        = &applicationInfo,
+        .enabledLayerCount       = layers.count,
+        .ppEnabledLayerNames     = layers.names,
+        .enabledExtensionCount   = extensions.count,
+        .ppEnabledExtensionNames = extensions.names
+    };
+
+    // Create the instance
+    VkInstance instance = VK_NULL_HANDLE;
+    VkResult result = vkCreateInstance(&instanceInfo, NULL, &instance);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create instance: %i\n", result);
+        exit(EXIT_FAILURE);
+    }
+    fprintf(stdout, "Created instance\n");
+
+    // Load instance level vulkan functions
+    volkLoadInstance(instance);
+    fprintf(stdout, "Loaded instance level vulkan functions using volk\n");
+
+    // Create the debug callback if this is in debug mode
+    if(debug == true) {
+        result = vkCreateDebugUtilsMessengerEXT(instance, &debugInfo, NULL, debugMessenger);
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Failed to set vulkan debug callback: %i\n", result);
+            vkDestroyInstance(instance, NULL);
+            exit(EXIT_FAILURE);
+        }
+        fprintf(stdout, "Added vulkan debug callback\n");
+    }
+
+    // Return the instance
+    return instance;
+}
+
 int main(int argc, char* argv[]) {
     // Output project info and argument count
     printf("Project Name:    %s\nProject Version: %s\nArg Count:       %i\n", PROJECT_NAME, PROJECT_VERSION, argc);
@@ -144,61 +202,12 @@ int main(int argc, char* argv[]) {
     LayerNames layers = getVulkanLayersAndValidate(DEBUG_BUILD);
     pushCleanupCallback(free, layers.names);
 
-    // Create a struct containing the settings for the debug messenger
-    VkDebugUtilsMessengerCreateInfoEXT debugInfo = {
-        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-        .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-        .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
-        .pfnUserCallback = vulkanDebugCallback
-    };
-
-    // Create a struct containing the settings for the application
-    VkApplicationInfo applicationInfo = {
-        .sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pApplicationName   = PROJECT_NAME,
-        .applicationVersion = VK_MAKE_VERSION(PROJECT_VERSION_MAJOR, PROJECT_VERSION_MINOR, PROJECT_VERSION_PATCH),
-        .pEngineName        = "No Engine",
-        .engineVersion      = VK_MAKE_VERSION(0, 0, 0),
-        .apiVersion         = VK_API_VERSION_1_4
-    };
-
-    // Create a struct containing the settings for the instance
-    VkInstanceCreateInfo instanceInfo = {
-        .sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        .pNext                   = &debugInfo,
-        .pApplicationInfo        = &applicationInfo,
-        .enabledLayerCount       = layers.count,
-        .ppEnabledLayerNames     = layers.names,
-        .enabledExtensionCount   = extensions.count,
-        .ppEnabledExtensionNames = extensions.names
-    };
-
     // Create the instance
-    VkInstance instance = VK_NULL_HANDLE;
-    result = vkCreateInstance(&instanceInfo, NULL, &instance);
-    if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create instance: %i\n", result);
-        return EXIT_FAILURE;
-    }
-    fprintf(stdout, "Created instance\n");
-
-    // Load instance level vulkan functions
-    volkLoadInstance(instance);
-    fprintf(stdout, "Loaded instance level vulkan functions using volk\n");
-
-    // Push the instance destroy function, we do this after loading the instance functions with volk as the destroy function is instance level
+    VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
+    VkInstance instance = createVulkanInstance(PROJECT_NAME, VK_MAKE_VERSION(PROJECT_VERSION_MAJOR, PROJECT_VERSION_MINOR, PROJECT_VERSION_PATCH), extensions, layers, DEBUG_BUILD, &debugMessenger);
     PUSH_CLEANUP_ARGS_2(vkDestroyInstance, instance, NULL);
-
-    // Create the debug callback if this is a debug build
-    #if DEBUG_BUILD == 1
-        VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
-        result = vkCreateDebugUtilsMessengerEXT(instance, &debugInfo, NULL, &debugMessenger);
-        if(result != VK_SUCCESS) {
-            fprintf(stderr, "Failed to set vulkan debug callback: %i\n", result);
-            return EXIT_FAILURE;
-        }
+    #if DEBUG_BUILD == true
         PUSH_CLEANUP_ARGS_3(vkDestroyDebugUtilsMessengerEXT, instance, debugMessenger, NULL);
-        fprintf(stdout, "Added vulkan debug callback\n");
     #endif
 
     // Create the window surface
