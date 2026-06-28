@@ -15,27 +15,27 @@
 typedef struct {
     const char** names;
     uint32_t     count;
-} extensionNames;
+} ExtensionNames;
 
 // This struct stores an array of vulkan extension properties and the number of them
 typedef struct {
     VkExtensionProperties* properties;
     uint32_t               count;
-} extensionProperties;
+} ExtensionProperties;
 
 // Get the list of vulkan extensions and validate them
-extensionNames getVulkanExtensionsAndValidate(bool debug);
+ExtensionNames getVulkanExtensionsAndValidate(bool debug);
 
 // Get the list of extensions we are going to use
-extensionNames getVulkanExtensions(bool debug);
+ExtensionNames getVulkanExtensions(bool debug);
 
 // Get the list of supported extensions
-extensionProperties getSupportedVulkanExtensions();
+ExtensionProperties getSupportedVulkanExtensions();
 
 // Get the list of device extensions we are going to use
-extensionNames getVulkanDeviceExtensions();
+ExtensionNames getVulkanDeviceExtensions();
 
 // Get the list of supported device extensions
-extensionProperties getSupportedVulkanDeviceExtensions(VkPhysicalDevice physicalDevice);
+ExtensionProperties getSupportedVulkanDeviceExtensions(VkPhysicalDevice physicalDevice);
 
 #endif // EXTENSIONS_H

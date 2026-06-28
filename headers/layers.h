@@ -15,21 +15,21 @@
 typedef struct {
     const char** names;
     uint32_t     count;
-} layerNames;
+} LayerNames;
 
 // This struct stores an array of vulkan layer properties and the number of them
 typedef struct {
     VkLayerProperties* properties;
     uint32_t           count;
-} layerProperties;
+} LayerProperties;
 
 // Get the list of vulkan layers and validate them
-layerNames getVulkanLayersAndValidate(bool debug);
+LayerNames getVulkanLayersAndValidate(bool debug);
 
 // Get the list of layers we are going to use
-layerNames getVulkanLayers(bool debug);
+LayerNames getVulkanLayers(bool debug);
 
 // Get the list of supported layers
-layerProperties getSupportedVulkanLayers();
+LayerProperties getSupportedVulkanLayers();
 
 #endif // LAYERS_H

@@ -12,7 +12,96 @@
 // Project Headers
 #include <cleanup.h>
 
-uint32_t getVulkanPhysicalDeviceSuitability(physicalDeviceAndConfiguration* physicalDevice, VkSurfaceKHR surface, extensionNames deviceExtensions) {
+PhysicalDeviceInfo getVulkanPhysicalDeviceInfo(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) {
+    // Define the physical device info structure and the pointer chain for physical device properties 2 to get all the properties
+    PhysicalDeviceInfo physicalDeviceInfo = {
+        .physicalDevice = physicalDevice,
+        .physicalDeviceProperties = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+            .pNext = &(VkPhysicalDeviceVulkan11Properties){
+                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES,
+                .pNext = &(VkPhysicalDeviceVulkan12Properties){
+                    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES,
+                    .pNext = &(VkPhysicalDeviceVulkan13Properties){
+                        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_PROPERTIES,
+                        .pNext = &(VkPhysicalDeviceVulkan14Properties){
+                            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_PROPERTIES
+                        }
+                    }
+                }
+            }
+        },
+        .surface = surface
+    };
+
+    // get the properties of the physical device we are currently checking
+    vkGetPhysicalDeviceProperties2(physicalDevice, &physicalDeviceInfo.physicalDeviceProperties);
+
+    // Get the supported device extensions array and register its cleanup method
+    physicalDeviceInfo.supportedExtensions = getSupportedVulkanDeviceExtensions(physicalDevice);
+
+    // Get the length of the supported queue families array
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &physicalDeviceInfo.queueFamilyPropertiesCount, NULL);
+
+    // Allocate the supported physical devices array
+    physicalDeviceInfo.queueFamilyProperties = malloc(sizeof(*physicalDeviceInfo.queueFamilyProperties) * physicalDeviceInfo.queueFamilyPropertiesCount);
+    if(physicalDeviceInfo.queueFamilyProperties == NULL) {
+        fprintf(stderr, "Failed to allocate supported queue families array of size %zu\n", sizeof(*physicalDeviceInfo.queueFamilyProperties) * physicalDeviceInfo.queueFamilyPropertiesCount);
+        exit(EXIT_FAILURE);
+    }
+
+    // initialize the structure type member variable for every variable in the queue family properties array
+    for(uint32_t i = 0; i < physicalDeviceInfo.queueFamilyPropertiesCount; i++) {
+        physicalDeviceInfo.queueFamilyProperties[i] = (VkQueueFamilyProperties2){
+            .sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2
+        };
+    }
+
+    // Fill the supported queue families array with the list of supported queue families for the physical device
+    vkGetPhysicalDeviceQueueFamilyProperties2(physicalDevice, &physicalDeviceInfo.queueFamilyPropertiesCount, &physicalDeviceInfo.queueFamilyProperties);
+
+    bool graphicsQueueFamilyFound = false, presentationQueueFamilyFound = false;
+
+    // Check for queue families that support presentation
+    physicalDeviceInfo.queueFamilyPresentationSupport = malloc(sizeof(*physicalDeviceInfo.queueFamilyPresentationSupport) * physicalDeviceInfo.queueFamilyPropertiesCount);
+    for(uint32_t i = 0; i < physicalDeviceInfo.queueFamilyPropertiesCount; i++) {
+        result = vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, physicalDeviceInfo.queueFamilyPresentationSupport[i]);
+        if(result != VK_SUCCESS) {
+            fprintf(stdout, "Failed to check if a physical device queue family supports presenting to the window surface: %i\n", result);
+            free(physicalDeviceInfo.queueFamilyPresentationSupport);
+            free(physicalDeviceInfo.queueFamilyProperties);
+            free(physicalDeviceInfo.surfaceFormats);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // // Get the length of the supported surface formats array
+    // VkResult result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, physicalDeviceInfo.surface, &physicalDeviceInfo.surfaceFormatsCount, NULL);
+    // if(result != VK_SUCCESS) {
+    //     fprintf(stderr, "Failed to get number of supported surface formats: %i\n", result);
+    //     exit(EXIT_FAILURE);
+    // }
+
+    // // If at least one surface format is supported enumerate the surface formats
+    // if(physicalDeviceInfo.surfaceFormatsCount != 0) {
+    //     // Allocate the supported surface formats array
+    //     physicalDeviceInfo.surfaceFormats = malloc(sizeof(*physicalDeviceInfo.surfaceFormats) * physicalDeviceInfo.surfaceFormatsCount);
+    //     if(physicalDeviceInfo.surfaceFormats == NULL) {
+    //         fprintf(stderr, "Failed to allocate supported surface formats array of size %zu\n", sizeof(*physicalDeviceInfo.surfaceFormats) * physicalDeviceInfo.surfaceFormatsCount);
+    //         exit(EXIT_FAILURE);
+    //     }
+
+    //     // Fill the supported surface formats array with the list of supported surface formats
+    //     result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, physicalDeviceInfo.surface, &physicalDeviceInfo.surfaceFormatsCount, physicalDeviceInfo.surfaceFormats);
+    //     if(result != VK_SUCCESS) {
+    //         fprintf(stderr, "Failed to get  supported surface formats: %i\n", result);
+    //         free(physicalDeviceInfo.surfaceFormats);
+    //         exit(EXIT_FAILURE);
+    //     }
+    // }
+}
+
+uint32_t getVulkanPhysicalDeviceSuitability(physicalDeviceInfo* physicalDevice, VkSurfaceKHR surface, ExtensionNames deviceExtensions) {
     // get the properties of the physical device we are currently checking
     VkPhysicalDeviceProperties physicalDeviceProperties;
     vkGetPhysicalDeviceProperties(physicalDevice->physicalDevice, &physicalDeviceProperties);
@@ -64,7 +153,7 @@ uint32_t getVulkanPhysicalDeviceSuitability(physicalDeviceAndConfiguration* phys
     }
 
     // Get the supported device extensions array and register its cleanup method
-    extensionProperties supportedDeviceExtensions = getSupportedVulkanDeviceExtensions(physicalDevice->physicalDevice);
+    ExtensionProperties supportedDeviceExtensions = getSupportedVulkanDeviceExtensions(physicalDevice->physicalDevice);
 
     // Ensure all requested device extensions are supported
     for(uint32_t i = 0; i < deviceExtensions.count; i++) {
@@ -151,7 +240,7 @@ uint32_t getVulkanPhysicalDeviceSuitability(physicalDeviceAndConfiguration* phys
     return score;
 }
 
-physicalDeviceAndConfiguration getVulkanSuitablePhysicalDevice(VkInstance instance, VkSurfaceKHR surface, extensionNames deviceExtensions) {
+physicalDeviceInfo getVulkanSuitablePhysicalDevice(VkInstance instance, VkSurfaceKHR surface, ExtensionNames deviceExtensions) {
     // Get the physical devices array and register its cleanup method
     uint32_t physicalDevicesCount = 0;
     VkPhysicalDevice* physicalDevices = getVulkanPhysicalDevices(instance, &physicalDevicesCount);
@@ -172,13 +261,13 @@ physicalDeviceAndConfiguration getVulkanSuitablePhysicalDevice(VkInstance instan
 
     // Create a handle for our selected physical device and create variables to store the index of our selected queue families and number of images in our swapchain
     uint32_t highestScore = 0;
-    physicalDeviceAndConfiguration mostSuitablePhysicalDevice = {
+    physicalDeviceInfo mostSuitablePhysicalDevice = {
         .physicalDevice         = VK_NULL_HANDLE
     };
 
     // Iterate through all physical devices and select the best one
     for(uint32_t i = 0; i < physicalDevicesCount; i++) {
-        physicalDeviceAndConfiguration tempPhysicalDevice = {
+        physicalDeviceInfo tempPhysicalDevice = {
             .physicalDevice         = physicalDevices[i]
         };
         uint32_t score = getVulkanPhysicalDeviceSuitability(&tempPhysicalDevice, surface, deviceExtensions);
@@ -225,7 +314,7 @@ VkPhysicalDevice* getVulkanPhysicalDevices(VkInstance instance, uint32_t* physic
     return physicalDevices;
 }
 
-VkDevice createVulkanDevice(physicalDeviceAndConfiguration physicalDevice, extensionNames deviceExtensions) {
+VkDevice createVulkanDevice(physicalDeviceInfo physicalDevice, ExtensionNames deviceExtensions) {
     // Print the physical device we will use
     VkPhysicalDeviceProperties physicalDeviceProperties;
     vkGetPhysicalDeviceProperties(physicalDevice.physicalDevice, &physicalDeviceProperties);

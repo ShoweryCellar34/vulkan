@@ -10,9 +10,9 @@
 // Project Headers
 #include <cleanup.h>
 
-layerNames getVulkanLayersAndValidate(bool debug) {
+LayerNames getVulkanLayersAndValidate(bool debug) {
     // Get the layers array
-    layerNames layers = getVulkanLayers(debug);
+    LayerNames layers = getVulkanLayers(debug);
     fprintf(stdout, "Successfully got list of required layers:\n");
 
     // Print all the layers we will use
@@ -21,7 +21,7 @@ layerNames getVulkanLayersAndValidate(bool debug) {
     }
 
     // Get the supported layers array and register its cleanup method
-    layerProperties supportedLayers = getSupportedVulkanLayers();
+    LayerProperties supportedLayers = getSupportedVulkanLayers();
     fprintf(stdout, "Successfully got list of supported layers:\n");
 
     // Print all the layers supported
@@ -52,28 +52,28 @@ layerNames getVulkanLayersAndValidate(bool debug) {
     return layers;
 }
 
-layerNames getVulkanLayers(bool debug) {
+LayerNames getVulkanLayers(bool debug) {
     // If we are in debug build return the khronos validation layer, and if we are not in a debug build we return NULL and set layer count to 1 and 0 respectively
     if(debug == true) {
         static const char* layerNamesArray[] = {
             "VK_LAYER_KHRONOS_validation"
         };
-        static layerNames layers = {
+        static LayerNames layers = {
             .names = layerNamesArray,
             .count = 1,
         };
         // Retrun the list of debug layers
         return layers;
     } else {
-        static layerNames layers = {0};
+        static LayerNames layers = {0};
         // Retrun the list of layers
         return layers;
     }
 }
 
-layerProperties getSupportedVulkanLayers() {
+LayerProperties getSupportedVulkanLayers() {
     // Get the length of the supported layers array
-    layerProperties supportedLayers = {0};
+    LayerProperties supportedLayers = {0};
     VkResult result = vkEnumerateInstanceLayerProperties(&supportedLayers.count, NULL);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to get number of supported layers: %i\n", result);

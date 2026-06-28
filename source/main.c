@@ -137,11 +137,11 @@ int main(int argc, char* argv[]) {
     fprintf(stdout, "Loaded global level vulkan functions using volk\n");
 
     // Get the extensions array and register its cleanup method
-    extensionNames extensions = getVulkanExtensionsAndValidate(DEBUG_BUILD);
+    ExtensionNames extensions = getVulkanExtensionsAndValidate(DEBUG_BUILD);
     pushCleanupCallback(free, extensions.names);
 
     // Get the layers array and register its cleanup method
-    layerNames layers = getVulkanLayersAndValidate(DEBUG_BUILD);
+    LayerNames layers = getVulkanLayersAndValidate(DEBUG_BUILD);
     pushCleanupCallback(free, layers.names);
 
     // Create a struct containing the settings for the debug messenger
@@ -206,7 +206,7 @@ int main(int argc, char* argv[]) {
     PUSH_CLEANUP_ARGS_3(vkDestroySurfaceKHR, instance, surface, NULL);
 
     // Get the device extensions array, it is static and does not need to be freed
-    extensionNames deviceExtensions = getVulkanDeviceExtensions();
+    ExtensionNames deviceExtensions = getVulkanDeviceExtensions();
     fprintf(stdout, "Successfully got list of required device extensions:\n");
 
     // Print all the device extensions we will use
@@ -215,7 +215,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Get the most suitable physical device
-    physicalDeviceAndConfiguration physicalDevice = getVulkanSuitablePhysicalDevice(instance, surface, deviceExtensions);
+    PhysicalDeviceInfo physicalDevice = getVulkanSuitablePhysicalDevice(instance, surface, deviceExtensions);
 
     // Ensure we have a suitable physical device before preceding
     if(physicalDevice.physicalDevice == VK_NULL_HANDLE) {

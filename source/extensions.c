@@ -12,9 +12,9 @@
 
 // Project Headers
 
-extensionNames getVulkanExtensionsAndValidate(bool debug) {
+ExtensionNames getVulkanExtensionsAndValidate(bool debug) {
     // Get the extensions array
-    extensionNames extensions = getVulkanExtensions(debug);
+    ExtensionNames extensions = getVulkanExtensions(debug);
     fprintf(stdout, "Successfully got list of required extensions:\n");
 
     // Print all the extensions we will use
@@ -23,7 +23,7 @@ extensionNames getVulkanExtensionsAndValidate(bool debug) {
     }
 
     // Get the supported extensions array and register its cleanup method
-    extensionProperties supportedExtensions = getSupportedVulkanExtensions();
+    ExtensionProperties supportedExtensions = getSupportedVulkanExtensions();
     fprintf(stdout, "Successfully got list of supported extensions:\n");
 
     // Print all the extensions supported
@@ -54,9 +54,9 @@ extensionNames getVulkanExtensionsAndValidate(bool debug) {
     return extensions;
 }
 
-extensionNames getVulkanExtensions(bool debug) {
+ExtensionNames getVulkanExtensions(bool debug) {
     // Get the array of extensions requested by GLFW
-    extensionNames glfwExtensions;
+    ExtensionNames glfwExtensions;
     glfwExtensions.names = glfwGetRequiredInstanceExtensions((uint32_t*)&glfwExtensions.count);
     if(glfwExtensions.names == NULL) {
         const char* errorMessage = NULL;
@@ -66,7 +66,7 @@ extensionNames getVulkanExtensions(bool debug) {
     }
 
     // Allocate memory for an array to store both glfw and maybe the debug extension
-    extensionNames extensions = {
+    ExtensionNames extensions = {
         .count = glfwExtensions.count + (debug == true ? 1 : 0),
     };
     extensions.names = malloc(sizeof(*extensions.names) * extensions.count);
@@ -85,9 +85,9 @@ extensionNames getVulkanExtensions(bool debug) {
     return extensions;
 }
 
-extensionProperties getSupportedVulkanExtensions() {
+ExtensionProperties getSupportedVulkanExtensions() {
     // Get the length of the supported extensions array
-    extensionProperties supportedExtensions = {0};
+    ExtensionProperties supportedExtensions = {0};
     VkResult result = vkEnumerateInstanceExtensionProperties(NULL, &supportedExtensions.count, NULL);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to get number of supported extensions: %i\n", result);
@@ -117,11 +117,11 @@ extensionProperties getSupportedVulkanExtensions() {
     return supportedExtensions;
 }
 
-extensionNames getVulkanDeviceExtensions() {
+ExtensionNames getVulkanDeviceExtensions() {
     static const char* deviceExtensionNamesArray[] = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME
     };
-    static extensionNames deviceExtensions = {
+    static ExtensionNames deviceExtensions = {
         .names = deviceExtensionNamesArray,
         .count = 1,
     };
@@ -129,9 +129,9 @@ extensionNames getVulkanDeviceExtensions() {
     return deviceExtensions;
 }
 
-extensionProperties getSupportedVulkanDeviceExtensions(VkPhysicalDevice physicalDevice) {
+ExtensionProperties getSupportedVulkanDeviceExtensions(VkPhysicalDevice physicalDevice) {
     // Get the length of the supported device extensions array
-    extensionProperties supportedDeviceExtensions = {0};
+    ExtensionProperties supportedDeviceExtensions = {0};
     VkResult result = vkEnumerateDeviceExtensionProperties(physicalDevice, NULL, &supportedDeviceExtensions.count, NULL);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to get number of supported device extensions: %i\n", result);
