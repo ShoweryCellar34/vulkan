@@ -12,82 +12,70 @@
 
 // Project Headers
 
-ExtensionNames getVulkanExtensionsAndValidate(bool debug) {
+StringSlice getVulkanExtensionsAndValidate(bool debug) {
     // Get the extensions array
-    ExtensionNames extensions = getVulkanExtensions(debug);
+    StringSlice extensions = getVulkanExtensions(debug);
     fprintf(stdout, "Successfully got list of required extensions:\n");
 
     // Print all the extensions we will use
     for(uint32_t i = 0; i < extensions.count; i++) {
-        fprintf(stdout, "    %s\n", extensions.names[i]);
+        fprintf(stdout, "    %s\n", extensions.data[i]);
     }
 
     // Get the supported extensions array and register its cleanup method
-    ExtensionProperties supportedExtensions = getSupportedVulkanExtensions();
+    ExtensionPropertiesSlice supportedExtensions = getSupportedVulkanExtensions();
     fprintf(stdout, "Successfully got list of supported extensions:\n");
 
     // Print all the extensions supported
     for(uint32_t i = 0; i < supportedExtensions.count; i++) {
-        fprintf(stdout, "    %s\n", supportedExtensions.properties[i].extensionName);
+        fprintf(stdout, "    %s\n", supportedExtensions.data[i].extensionName);
     }
 
     // Ensure all requested extensions are supported
     for(uint32_t i = 0; i < extensions.count; i++) {
         bool extensionSupported = false;
         for(uint32_t j = 0; j < supportedExtensions.count; j++) {
-            if(!strcmp(extensions.names[i], supportedExtensions.properties[j].extensionName)) {
+            if(!strcmp(extensions.data[i], supportedExtensions.data[j].extensionName)) {
                 extensionSupported = true;
             }
         }
         if(extensionSupported == false) {
             fprintf(stderr, "Not all requested extensions are supported\n");
-            free(supportedExtensions.properties);
+            free(supportedExtensions.data);
             exit(EXIT_FAILURE);
         }
     }
     fprintf(stdout, "All required extensions are supported\n");
 
     // Free the supported extensions array
-    free(supportedExtensions.properties);
+    free(supportedExtensions.data);
 
     // Return the list of extensions
     return extensions;
 }
 
-ExtensionNames getVulkanExtensions(bool debug) {
-    // Get the array of extensions requested by GLFW
-    ExtensionNames glfwExtensions;
-    glfwExtensions.names = glfwGetRequiredInstanceExtensions((uint32_t*)&glfwExtensions.count);
-    if(glfwExtensions.names == NULL) {
-        const char* errorMessage = NULL;
-        int errorCode = glfwGetError(&errorMessage);
-        fprintf(stderr, "Failed to get array of extensions required by GLFW:\n    Error Code:    %i\n    Error Message: %s\n", errorCode, errorMessage);
-        exit(EXIT_FAILURE);
-    }
+StringSlice getVulkanExtensions(bool debug) {
+    StringSlice glfwExtensions;
+    glfwExtensions.data = glfwGetRequiredInstanceExtensions(&glfwExtensions.count);
 
-    // Allocate memory for an array to store both glfw and maybe the debug extension
-    ExtensionNames extensions = {
-        .count = glfwExtensions.count + (debug == true ? 1 : 0),
+    static const char* extensions[] = {
+        "",
+        "",
+        VK_EXT_DEBUG_UTILS_EXTENSION_NAME
     };
-    extensions.names = malloc(sizeof(*extensions.names) * extensions.count);
-    if(extensions.names == NULL) {
-        fprintf(stderr, "Failed to allocate extensions array of length %zu\n", sizeof(*extensions.names) * extensions.count);
-        exit(EXIT_FAILURE);
-    }
 
-    // Copy glfw extensions to joined array and maybe add debug extension to the end
-    memcpy(extensions.names, glfwExtensions.names, sizeof(*glfwExtensions.names) * glfwExtensions.count);
-    if(debug == true) {
-        extensions.names[glfwExtensions.count] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
-    }
+    memcpy((void*)extensions, glfwExtensions.data, SLICE_SIZE(glfwExtensions));
 
     // Return the list of extensions 
-    return extensions;
+    return (StringSlice){
+        .count = (debug == true ? 3 : 2),
+        .data  = extensions
+    };
 }
 
-ExtensionProperties getSupportedVulkanExtensions() {
+ExtensionPropertiesSlice getSupportedVulkanExtensions() {
     // Get the length of the supported extensions array
-    ExtensionProperties supportedExtensions = {0};
+    ExtensionPropertiesSlice supportedExtensions = {0};
     VkResult result = vkEnumerateInstanceExtensionProperties(NULL, &supportedExtensions.count, NULL);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to get number of supported extensions: %i\n", result);
@@ -100,14 +88,14 @@ ExtensionProperties getSupportedVulkanExtensions() {
     }
 
     // Allocate the supported extensions array
-    supportedExtensions.properties = malloc(sizeof(*supportedExtensions.properties) * supportedExtensions.count);
-    if(supportedExtensions.properties == NULL) {
-        fprintf(stderr, "Failed to allocate supported extensions array of size %zu\n", sizeof(*supportedExtensions.properties) * supportedExtensions.count);
+    supportedExtensions.data = malloc(SLICE_SIZE(supportedExtensions));
+    if(supportedExtensions.data == NULL) {
+        fprintf(stderr, "Failed to allocate supported extensions array of size %zu\n", SLICE_SIZE(supportedExtensions));
         exit(EXIT_FAILURE);
     }
 
     // Fill the supported extensions array with the list of supported extensions
-    result = vkEnumerateInstanceExtensionProperties(NULL, &supportedExtensions.count, supportedExtensions.properties);
+    result = vkEnumerateInstanceExtensionProperties(NULL, &supportedExtensions.count, supportedExtensions.data);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to get supported extensions: %i\n", result);
         exit(EXIT_FAILURE);
@@ -117,21 +105,19 @@ ExtensionProperties getSupportedVulkanExtensions() {
     return supportedExtensions;
 }
 
-ExtensionNames getVulkanDeviceExtensions() {
-    static const char* deviceExtensionNamesArray[] = {
+StringSlice getVulkanDeviceExtensions() {
+    static const char* extensionNames[] = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME
     };
-    static ExtensionNames deviceExtensions = {
-        .names = deviceExtensionNamesArray,
+    return (StringSlice){
         .count = 1,
+        .data  = (const char**)&extensionNames
     };
-    // Retrun the list of debug ayers
-    return deviceExtensions;
 }
 
-ExtensionProperties getSupportedVulkanDeviceExtensions(VkPhysicalDevice physicalDevice) {
+ExtensionPropertiesSlice getSupportedVulkanDeviceExtensions(VkPhysicalDevice physicalDevice) {
     // Get the length of the supported device extensions array
-    ExtensionProperties supportedDeviceExtensions = {0};
+    ExtensionPropertiesSlice supportedDeviceExtensions = {0};
     VkResult result = vkEnumerateDeviceExtensionProperties(physicalDevice, NULL, &supportedDeviceExtensions.count, NULL);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to get number of supported device extensions: %i\n", result);
@@ -144,14 +130,14 @@ ExtensionProperties getSupportedVulkanDeviceExtensions(VkPhysicalDevice physical
     }
 
     // Allocate the supported device extensions array
-    supportedDeviceExtensions.properties = malloc(sizeof(*supportedDeviceExtensions.properties) * supportedDeviceExtensions.count);
-    if(supportedDeviceExtensions.properties == NULL) {
-        fprintf(stderr, "Failed to allocate supported device extensions array of size %zu\n", sizeof(*supportedDeviceExtensions.properties) * supportedDeviceExtensions.count);
+    supportedDeviceExtensions.data = malloc(SLICE_SIZE(supportedDeviceExtensions));
+    if(supportedDeviceExtensions.data == NULL) {
+        fprintf(stderr, "Failed to allocate supported device extensions array of size %zu\n", SLICE_SIZE(supportedDeviceExtensions));
         exit(EXIT_FAILURE);
     }
 
     // Fill the supported device extensions array with the list of supported device extensions
-    result = vkEnumerateDeviceExtensionProperties(physicalDevice, NULL, &supportedDeviceExtensions.count, supportedDeviceExtensions.properties);
+    result = vkEnumerateDeviceExtensionProperties(physicalDevice, NULL, &supportedDeviceExtensions.count, supportedDeviceExtensions.data);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to get supported device extensions: %i\n", result);
         exit(EXIT_FAILURE);

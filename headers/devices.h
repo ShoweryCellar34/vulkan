@@ -14,23 +14,37 @@
 // This struct stores a vulkan physical device and the graphics and presentation queue family indicies
 typedef struct {
     VkPhysicalDevice            physicalDevice;
-    VkPhysicalDeviceProperties2 physicalDeviceProperties;
-    ExtensionProperties         supportedExtensions;
     VkSurfaceKHR                surface;
-    uint32_t                    surfaceFormatsCount; 
-    VkSurfaceFormatKHR*         surfaceFormats;
-    uint32_t                    queueFamilyPropertiesCount;
+
+    VkPhysicalDeviceProperties2 physicalDeviceProperties;
+    ExtensionPropertiesSlice    supportedExtensions;
+    SurfaceFormatKHRSlice       surfaceFormats;
+    uint32_t                    queueFamilyCount;
     VkQueueFamilyProperties2*   queueFamilyProperties;
-    VkBool32*                   queueFamilyPresentationSupport;
+    VkBool32*                   queueFamiliesPresentationSupport;
 } PhysicalDeviceInfo;
 
+MAKE_SLICE(PhysicalDeviceInfo, uint32_t, PhysicalDeviceInfo)
+
+typedef struct {
+    PhysicalDeviceInfo physicalDeviceInfo;
+    uint32_t           score;
+
+    uint32_t           surfaceFormatIndex;
+    uint32_t           graphicsQueueFamilyIndex;
+    uint32_t           presentationQueueFamilyIndex;
+} PhysicalDeviceCreateInfo;
+
+// Destroys the members of a valid physical device info structure safely
+void destroyVulkanPhysicalDeviceInfo(PhysicalDeviceInfo* physicalDeviceInfo);
+
 // Get the most suitable vulkan physical device and return it and its configuration
-PhysicalDeviceInfo getVulkanSuitablePhysicalDevice(VkInstance instance, VkSurfaceKHR surface, ExtensionNames deviceExtensions);
+PhysicalDeviceCreateInfo getSuitableVulkanPhysicalDevice(VkInstance instance, VkSurfaceKHR surface, StringSlice deviceExtensions, SurfaceFormatKHRSlice surfaceFormats);
 
 // Get the list of supported physical devices
-VkPhysicalDevice* getVulkanPhysicalDevices(VkInstance instance, uint32_t* physicalDevicesCount);
+PhysicalDeviceInfoSlice getVulkanPhysicalDeviceInfos(VkInstance instance, VkSurfaceKHR surface);
 
 // Creates and return a vulkan logical device
-VkDevice createVulkanDevice(PhysicalDeviceInfo physicalDevice, ExtensionNames deviceExtensions);
+VkDevice createVulkanDevice(PhysicalDeviceCreateInfo physicalDeviceCreateInfo, StringSlice deviceExtensions);
 
 #endif // DEVICES_H

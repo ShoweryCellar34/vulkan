@@ -12,10 +12,25 @@
 // Project Headers
 #include <cleanup.h>
 
+void destroyVulkanPhysicalDeviceInfo(PhysicalDeviceInfo* physicalDeviceInfo) {
+    SLICE_DESTROY_IF(physicalDeviceInfo->surfaceFormats)
+    if(physicalDeviceInfo->queueFamilyProperties != NULL) {
+        free(physicalDeviceInfo->queueFamilyProperties);
+        physicalDeviceInfo->queueFamilyProperties = NULL;
+
+        free(physicalDeviceInfo->queueFamiliesPresentationSupport);
+        physicalDeviceInfo->queueFamiliesPresentationSupport = NULL;
+
+        physicalDeviceInfo->queueFamilyCount = 0;
+    }
+}
+
 PhysicalDeviceInfo getVulkanPhysicalDeviceInfo(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) {
     // Define the physical device info structure and the pointer chain for physical device properties 2 to get all the properties
     PhysicalDeviceInfo physicalDeviceInfo = {
         .physicalDevice = physicalDevice,
+        .surface        = surface,
+
         .physicalDeviceProperties = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
             .pNext = &(VkPhysicalDeviceVulkan11Properties){
@@ -30,8 +45,7 @@ PhysicalDeviceInfo getVulkanPhysicalDeviceInfo(VkPhysicalDevice physicalDevice, 
                     }
                 }
             }
-        },
-        .surface = surface
+        }
     };
 
     // get the properties of the physical device we are currently checking
@@ -41,292 +55,242 @@ PhysicalDeviceInfo getVulkanPhysicalDeviceInfo(VkPhysicalDevice physicalDevice, 
     physicalDeviceInfo.supportedExtensions = getSupportedVulkanDeviceExtensions(physicalDevice);
 
     // Get the length of the supported queue families array
-    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &physicalDeviceInfo.queueFamilyPropertiesCount, NULL);
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &physicalDeviceInfo.queueFamilyCount, NULL);
 
     // Allocate the supported physical devices array
-    physicalDeviceInfo.queueFamilyProperties = malloc(sizeof(*physicalDeviceInfo.queueFamilyProperties) * physicalDeviceInfo.queueFamilyPropertiesCount);
+    physicalDeviceInfo.queueFamilyProperties = malloc(sizeof(*physicalDeviceInfo.queueFamilyProperties) * physicalDeviceInfo.queueFamilyCount);
     if(physicalDeviceInfo.queueFamilyProperties == NULL) {
-        fprintf(stderr, "Failed to allocate supported queue families array of size %zu\n", sizeof(*physicalDeviceInfo.queueFamilyProperties) * physicalDeviceInfo.queueFamilyPropertiesCount);
+        fprintf(stderr, "Failed to allocate supported queue families array of size %zu\n", sizeof(*physicalDeviceInfo.queueFamilyProperties) * physicalDeviceInfo.queueFamilyCount);
+        destroyVulkanPhysicalDeviceInfo(&physicalDeviceInfo);
         exit(EXIT_FAILURE);
     }
 
     // initialize the structure type member variable for every variable in the queue family properties array
-    for(uint32_t i = 0; i < physicalDeviceInfo.queueFamilyPropertiesCount; i++) {
+    for(uint32_t i = 0; i < physicalDeviceInfo.queueFamilyCount; i++) {
         physicalDeviceInfo.queueFamilyProperties[i] = (VkQueueFamilyProperties2){
             .sType = VK_STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2
         };
     }
 
     // Fill the supported queue families array with the list of supported queue families for the physical device
-    vkGetPhysicalDeviceQueueFamilyProperties2(physicalDevice, &physicalDeviceInfo.queueFamilyPropertiesCount, &physicalDeviceInfo.queueFamilyProperties);
+    vkGetPhysicalDeviceQueueFamilyProperties2(physicalDevice, &physicalDeviceInfo.queueFamilyCount, physicalDeviceInfo.queueFamilyProperties);
 
-    bool graphicsQueueFamilyFound = false, presentationQueueFamilyFound = false;
+    // This variable will be set to true if at least one queue family supports presentation
+    bool checkForSurfaceFormats = false;
 
     // Check for queue families that support presentation
-    physicalDeviceInfo.queueFamilyPresentationSupport = malloc(sizeof(*physicalDeviceInfo.queueFamilyPresentationSupport) * physicalDeviceInfo.queueFamilyPropertiesCount);
-    for(uint32_t i = 0; i < physicalDeviceInfo.queueFamilyPropertiesCount; i++) {
-        result = vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, physicalDeviceInfo.queueFamilyPresentationSupport[i]);
+    physicalDeviceInfo.queueFamiliesPresentationSupport = malloc(sizeof(*physicalDeviceInfo.queueFamiliesPresentationSupport) * physicalDeviceInfo.queueFamilyCount);
+
+    if(physicalDeviceInfo.queueFamiliesPresentationSupport == NULL) {
+        fprintf(stderr, "Failed to allocate queue families presentation support array of size %zu\n", sizeof(*physicalDeviceInfo.queueFamiliesPresentationSupport) * physicalDeviceInfo.queueFamilyCount);
+        exit(EXIT_FAILURE);
+    }
+
+    for(uint32_t i = 0; i < physicalDeviceInfo.queueFamilyCount; i++) {
+        VkResult result = vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &physicalDeviceInfo.queueFamiliesPresentationSupport[i]);
         if(result != VK_SUCCESS) {
             fprintf(stdout, "Failed to check if a physical device queue family supports presenting to the window surface: %i\n", result);
-            free(physicalDeviceInfo.queueFamilyPresentationSupport);
-            free(physicalDeviceInfo.queueFamilyProperties);
-            free(physicalDeviceInfo.surfaceFormats);
+            destroyVulkanPhysicalDeviceInfo(&physicalDeviceInfo);
+            exit(EXIT_FAILURE);
+        }
+
+        if(physicalDeviceInfo.queueFamiliesPresentationSupport[i] == true) {
+            checkForSurfaceFormats = true;
+        }
+    }
+
+    if(checkForSurfaceFormats == true) {
+        // Get the length of the supported surface formats array
+        VkResult result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, physicalDeviceInfo.surface, &physicalDeviceInfo.surfaceFormats.count, NULL);
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Failed to get number of supported surface formats: %i\n", result);
+            exit(EXIT_FAILURE);
+        }
+
+        // Allocate the supported surface formats array
+        physicalDeviceInfo.surfaceFormats.data = malloc(SLICE_SIZE(physicalDeviceInfo.surfaceFormats));
+        if(physicalDeviceInfo.surfaceFormats.data == NULL) {
+            fprintf(stderr, "Failed to allocate supported surface formats array of size %zu\n", SLICE_SIZE(physicalDeviceInfo.surfaceFormats));
+            exit(EXIT_FAILURE);
+        }
+
+        // Fill the supported surface formats array with the list of supported surface formats
+        result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, physicalDeviceInfo.surface, &physicalDeviceInfo.surfaceFormats.count, physicalDeviceInfo.surfaceFormats.data);
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Failed to get  supported surface formats: %i\n", result);
+            destroyVulkanPhysicalDeviceInfo(&physicalDeviceInfo);
             exit(EXIT_FAILURE);
         }
     }
 
-    // // Get the length of the supported surface formats array
-    // VkResult result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, physicalDeviceInfo.surface, &physicalDeviceInfo.surfaceFormatsCount, NULL);
-    // if(result != VK_SUCCESS) {
-    //     fprintf(stderr, "Failed to get number of supported surface formats: %i\n", result);
-    //     exit(EXIT_FAILURE);
-    // }
-
-    // // If at least one surface format is supported enumerate the surface formats
-    // if(physicalDeviceInfo.surfaceFormatsCount != 0) {
-    //     // Allocate the supported surface formats array
-    //     physicalDeviceInfo.surfaceFormats = malloc(sizeof(*physicalDeviceInfo.surfaceFormats) * physicalDeviceInfo.surfaceFormatsCount);
-    //     if(physicalDeviceInfo.surfaceFormats == NULL) {
-    //         fprintf(stderr, "Failed to allocate supported surface formats array of size %zu\n", sizeof(*physicalDeviceInfo.surfaceFormats) * physicalDeviceInfo.surfaceFormatsCount);
-    //         exit(EXIT_FAILURE);
-    //     }
-
-    //     // Fill the supported surface formats array with the list of supported surface formats
-    //     result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, physicalDeviceInfo.surface, &physicalDeviceInfo.surfaceFormatsCount, physicalDeviceInfo.surfaceFormats);
-    //     if(result != VK_SUCCESS) {
-    //         fprintf(stderr, "Failed to get  supported surface formats: %i\n", result);
-    //         free(physicalDeviceInfo.surfaceFormats);
-    //         exit(EXIT_FAILURE);
-    //     }
-    // }
+    return physicalDeviceInfo;
 }
 
-uint32_t getVulkanPhysicalDeviceSuitability(physicalDeviceInfo* physicalDevice, VkSurfaceKHR surface, ExtensionNames deviceExtensions) {
-    // get the properties of the physical device we are currently checking
-    VkPhysicalDeviceProperties physicalDeviceProperties;
-    vkGetPhysicalDeviceProperties(physicalDevice->physicalDevice, &physicalDeviceProperties);
+PhysicalDeviceCreateInfo getVulkanPhysicalDeviceSuitability(PhysicalDeviceInfo physicalDeviceInfo, StringSlice deviceExtensions, SurfaceFormatKHRSlice surfaceFormats) {
+    PhysicalDeviceCreateInfo physicalDeviceCreateInfo = {
+        .physicalDeviceInfo = physicalDeviceInfo
+    };
 
     // Ensure the current physical device supports at least vulkan 1.4
-    if(physicalDeviceProperties.apiVersion < VK_API_VERSION_1_4) {
-        return 0;
-    }
-
-    // Get the length of the supported surface formats array
-    uint32_t surfaceFormatsCount = 0;
-    VkResult result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice->physicalDevice, surface, &surfaceFormatsCount, NULL);
-    if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to get number of supported surface formats: %i\n", result);
-        exit(EXIT_FAILURE);
-    }
-
-    // If no surface formats are supported we exit early to avoid allocating 0 bytes and doing unnecessary operations
-    if(surfaceFormatsCount == 0) {
-        return 0;
-    }
-
-    // Allocate the supported surface formats array
-    VkSurfaceFormatKHR* surfaceFormats = malloc(sizeof(VkSurfaceFormatKHR) * surfaceFormatsCount);
-    if(surfaceFormats == NULL) {
-        fprintf(stderr, "Failed to allocate supported surface formats array of size %zu\n", surfaceFormatsCount * sizeof(VkSurfaceFormatKHR));
-        exit(EXIT_FAILURE);
-    }
-
-    // Fill the supported surface formats array with the list of supported surface formats
-    result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice->physicalDevice, surface, &surfaceFormatsCount, surfaceFormats);
-    if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to get  supported surface formats: %i\n", result);
-        free(surfaceFormats);
-        exit(EXIT_FAILURE);
+    if(physicalDeviceInfo.physicalDeviceProperties.properties.apiVersion < VK_API_VERSION_1_4) {
+        return (PhysicalDeviceCreateInfo){
+            .physicalDeviceInfo = physicalDeviceInfo
+        };
     }
 
     // Ensure all required surface formats are supported
-    bool surfaceFormatSupported = false;
-    for(uint32_t i = 0; i < surfaceFormatsCount; i++) {
-        if(surfaceFormats[i].format == VK_FORMAT_B8G8R8A8_SRGB && surfaceFormats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-            surfaceFormatSupported = true;
-            physicalDevice->format = surfaceFormats[i];
-        }
-    }
-    free(surfaceFormats);
-    if(surfaceFormatSupported == false) {
-        return 0;
-    }
-
-    // Get the supported device extensions array and register its cleanup method
-    ExtensionProperties supportedDeviceExtensions = getSupportedVulkanDeviceExtensions(physicalDevice->physicalDevice);
-
-    // Ensure all requested device extensions are supported
-    for(uint32_t i = 0; i < deviceExtensions.count; i++) {
-        bool deviceExtensionSupported = false;
-        for(uint32_t j = 0; j < supportedDeviceExtensions.count; j++) {
-            if(!strcmp(deviceExtensions.names[i], supportedDeviceExtensions.properties[j].extensionName)) {
-                deviceExtensionSupported = true;
+    for(uint32_t i = 0; i < physicalDeviceInfo.surfaceFormats.count; i++) {
+        bool surfaceFormatDesired = false;
+        for(uint32_t j = 0; j < surfaceFormats.count; j++) {
+            if(surfaceFormats.data[j].format == physicalDeviceInfo.surfaceFormats.data[i].format && surfaceFormats.data[j].colorSpace == physicalDeviceInfo.surfaceFormats.data[i].colorSpace) {
+                surfaceFormatDesired = true;
             }
         }
-        if(deviceExtensionSupported == false) {
-            return 0;
-        }
-    }
-    // Free the supported device extensions array because we don't need it anymore
-    free(supportedDeviceExtensions.properties);
-
-    // Get the length of the supported queue families array
-    uint32_t queueFamiliesCount = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice->physicalDevice, &queueFamiliesCount, NULL);
-    if(queueFamiliesCount == 0) {
-        return 0;
-    }
-
-    // Allocate the supported physical devices array
-    VkQueueFamilyProperties* queueFamilies = malloc(sizeof(VkQueueFamilyProperties) * queueFamiliesCount);
-    if(queueFamilies == NULL) {
-        fprintf(stderr, "Failed to allocate supported queue families array of size %zu\n", queueFamiliesCount * sizeof(VkQueueFamilyProperties));
-        exit(EXIT_FAILURE);
-    }
-
-    // Fill the supported queue families array with the list of supported queue families for the physical device
-    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice->physicalDevice, &queueFamiliesCount, queueFamilies);
-
-    bool graphicsQueueFamilyFound = false, presentationQueueFamilyFound = false;
-
-    for(uint32_t i = 0; i < queueFamiliesCount; i++) {
-        // Check if the current queue family supports graphics
-        if(queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-            graphicsQueueFamilyFound = true;
-            physicalDevice->graphicsQueueFamilyIndex = i;
-        }
-
-        // Check if the current queue family supports presentation
-        VkBool32 presentationSupport = VK_FALSE;
-        result = vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice->physicalDevice, i, surface, &presentationSupport);
-        if(result != VK_SUCCESS) {
-            fprintf(stdout, "Failed to check if a physical device queue family supports presenting to the window surface: %i\n", result);
-            free(queueFamilies);
-            exit(EXIT_FAILURE);
-        }
-        if(presentationSupport == VK_TRUE) {
-            presentationQueueFamilyFound = true;
-            physicalDevice->presentationQueueFamilyIndex = i;
-        }
-
-        // If there is one queue family that supports both graphics and presentation we can exit the loop early as this is the best case scenario
-        if(graphicsQueueFamilyFound == presentationQueueFamilyFound) {
+        if(surfaceFormatDesired) {
+            physicalDeviceCreateInfo.surfaceFormatIndex = i;
             break;
         }
     }
-    // Free the queue families array because we don't need it anymore
-    free(queueFamilies);
 
-    // If we haven't found every needed queue family on the same physical device we set the graphics and presentation queues to not found
-    if(graphicsQueueFamilyFound == false || presentationQueueFamilyFound == false) {
-        physicalDevice->graphicsQueueFamilyIndex = 0;
-        physicalDevice->presentationQueueFamilyIndex = 0;
-        return 0;
+    // Ensure all required device extensions are supported
+    for(uint32_t i = 0; i < deviceExtensions.count; i++) {
+        bool deviceExtensionSupported = false;
+        for(uint32_t j = 0; j < physicalDeviceInfo.supportedExtensions.count; j++) {
+            if(!strcmp(deviceExtensions.data[i], physicalDeviceInfo.supportedExtensions.data[j].extensionName)) {
+                deviceExtensionSupported = true;
+            }
+        }
+        // Ensure that the device extension were checking is supported by the physical device
+        if(deviceExtensionSupported == false) {
+            return (PhysicalDeviceCreateInfo){
+                .physicalDeviceInfo = physicalDeviceInfo
+            };
+        }
     }
 
-    // Create a score variable to store the suitability of the physical device, set it to 1 by default because the device is atleast minimally suitable
-    uint32_t score = 1;
+    // Select the queue families we are going to use
+    uint8_t breakFlag = 0;
+    for(uint32_t i = 0; i < physicalDeviceInfo.queueFamilyCount; i++) {
+        if((physicalDeviceInfo.queueFamilyProperties[i].queueFamilyProperties.queueFlags & VK_QUEUE_GRAPHICS_BIT) == 1) {
+            physicalDeviceCreateInfo.graphicsQueueFamilyIndex = i;
+            breakFlag = 1;
+            for(uint32_t j = 0; j < physicalDeviceInfo.queueFamilyCount; j++) {
+                if(physicalDeviceInfo.queueFamiliesPresentationSupport[j] == VK_TRUE) {
+                    physicalDeviceCreateInfo.presentationQueueFamilyIndex = j;
+                    breakFlag = 2;
+                    if(i == j) {
+                        breakFlag = 3;
+                        break;
+                    }
+                }
+            }
+            if(breakFlag != 0) {
+                break;
+            }
+        }
+    }
+
+    // If we haven't found every needed queue family on the same physical device we set the graphics and presentation queues to not found
+    if(breakFlag < 2) {
+        physicalDeviceCreateInfo.graphicsQueueFamilyIndex     = 0;
+        physicalDeviceCreateInfo.presentationQueueFamilyIndex = 0;
+        return (PhysicalDeviceCreateInfo){
+            .physicalDeviceInfo = physicalDeviceInfo
+        };
+    }
 
     // If there is one queue family that supports both graphics and presentation we add 1 the score
-    if(physicalDevice->graphicsQueueFamilyIndex == physicalDevice->presentationQueueFamilyIndex) {
-        score += 1;
+    if(breakFlag == 3) {
+        physicalDeviceCreateInfo.score += 1;
     }
 
     // If the physical device is a discrete gpu add 2 the score
-    if(physicalDeviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
-        score += 2;
+    if(physicalDeviceInfo.physicalDeviceProperties.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+        physicalDeviceCreateInfo.score += 2;
     }
 
-    return score;
+    return physicalDeviceCreateInfo;
 }
 
-physicalDeviceInfo getVulkanSuitablePhysicalDevice(VkInstance instance, VkSurfaceKHR surface, ExtensionNames deviceExtensions) {
+PhysicalDeviceCreateInfo getSuitableVulkanPhysicalDevice(VkInstance instance, VkSurfaceKHR surface, StringSlice deviceExtensions, SurfaceFormatKHRSlice surfaceFormats) {
     // Get the physical devices array and register its cleanup method
-    uint32_t physicalDevicesCount = 0;
-    VkPhysicalDevice* physicalDevices = getVulkanPhysicalDevices(instance, &physicalDevicesCount);
-    pushCleanupCallback(free, physicalDevices);
+    PhysicalDeviceInfoSlice physicalDeviceInfos = getVulkanPhysicalDeviceInfos(instance, surface);
+
     // Ensure there is atleast one physical device before continuing
-    if(physicalDevicesCount == 0) {
+    if(physicalDeviceInfos.count == 0) {
         fprintf(stdout, "No physical devices supported\n");
         exit(EXIT_FAILURE);
     }
     fprintf(stdout, "Successfully got list of physical devices:\n");
 
     // Print all the physical devices supported
-    for(uint32_t i = 0; i < physicalDevicesCount; i++) {
-        VkPhysicalDeviceProperties physicalDeviceProperties;
-        vkGetPhysicalDeviceProperties(physicalDevices[i], &physicalDeviceProperties);
-        fprintf(stdout, "    %s\n", physicalDeviceProperties.deviceName);
+    for(uint32_t i = 0; i < physicalDeviceInfos.count; i++) {
+        fprintf(stdout, "    %s\n", physicalDeviceInfos.data[i].physicalDeviceProperties.properties.deviceName);
     }
 
     // Create a handle for our selected physical device and create variables to store the index of our selected queue families and number of images in our swapchain
-    uint32_t highestScore = 0;
-    physicalDeviceInfo mostSuitablePhysicalDevice = {
-        .physicalDevice         = VK_NULL_HANDLE
-    };
+    PhysicalDeviceCreateInfo mostSuitablePhysicalDevice = {0};
 
     // Iterate through all physical devices and select the best one
-    for(uint32_t i = 0; i < physicalDevicesCount; i++) {
-        physicalDeviceInfo tempPhysicalDevice = {
-            .physicalDevice         = physicalDevices[i]
-        };
-        uint32_t score = getVulkanPhysicalDeviceSuitability(&tempPhysicalDevice, surface, deviceExtensions);
-        if(score > highestScore) {
-            highestScore = score;
-            mostSuitablePhysicalDevice = tempPhysicalDevice;
+    for(uint32_t i = 0; i < physicalDeviceInfos.count; i++) {
+        PhysicalDeviceCreateInfo currentPhysicalDeviceCreateInfo = getVulkanPhysicalDeviceSuitability(physicalDeviceInfos.data[i], deviceExtensions, surfaceFormats);
+        if(currentPhysicalDeviceCreateInfo.score > mostSuitablePhysicalDevice.score) {
+            mostSuitablePhysicalDevice = currentPhysicalDeviceCreateInfo;
         }
     }
-
-    // Free the physical devices array
-    popCleanupCallback(0);
 
     // Return the most suitable physical device, this will be empty if no suitable device was found
     return mostSuitablePhysicalDevice;
 }
 
-VkPhysicalDevice* getVulkanPhysicalDevices(VkInstance instance, uint32_t* physicalDevicesCount) {
+PhysicalDeviceInfoSlice getVulkanPhysicalDeviceInfos(VkInstance instance, VkSurfaceKHR surface) {
+    PhysicalDeviceInfoSlice physicalDeviceInfos = {0};
+
     // Get the length of the supported physical devices array
-    VkResult result = vkEnumeratePhysicalDevices(instance, physicalDevicesCount, NULL);
+    VkResult result = vkEnumeratePhysicalDevices(instance, &physicalDeviceInfos.count, NULL);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to get number of supported physical devices: %i\n", result);
         exit(EXIT_FAILURE);
     }
 
     // If no physical devices are supported we exit early to avoid allocating 0 bytes and doing unnecessary operations
-    if(*physicalDevicesCount == 0) {
-        return NULL;
+    if(physicalDeviceInfos.count == 0) {
+        return (PhysicalDeviceInfoSlice){0};
     }
 
     // Allocate the supported physical devices array
-    VkPhysicalDevice* physicalDevices = malloc(sizeof(VkPhysicalDevice) * *physicalDevicesCount);
+    VkPhysicalDevice* physicalDevices = malloc(sizeof(VkPhysicalDevice) * physicalDeviceInfos.count);
+    physicalDeviceInfos.data          = malloc(SLICE_SIZE(physicalDeviceInfos));
     if(physicalDevices == NULL) {
-        fprintf(stderr, "Failed to allocate supported physical devices array of size %zu\n", *physicalDevicesCount * sizeof(VkPhysicalDevice));
+        fprintf(stderr, "Failed to allocate supported physical devices array of size %zu\n", sizeof(VkPhysicalDevice) * physicalDeviceInfos.count);
         exit(EXIT_FAILURE);
     }
 
     // Fill the supported physical device array with the list of physical devices
-    result = vkEnumeratePhysicalDevices(instance, physicalDevicesCount, physicalDevices);
+    result = vkEnumeratePhysicalDevices(instance, &physicalDeviceInfos.count, physicalDevices);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to get number of supported physical devices: %i\n", result);
         exit(EXIT_FAILURE);
     }
 
-    return physicalDevices;
+    // Fill the physical device infos slice with the physical device info for each physical device
+    for(uint32_t i = 0; i < physicalDeviceInfos.count; i++) {
+        physicalDeviceInfos.data[i] = getVulkanPhysicalDeviceInfo(physicalDevices[i], surface);
+    }
+
+    return physicalDeviceInfos;
 }
 
-VkDevice createVulkanDevice(physicalDeviceInfo physicalDevice, ExtensionNames deviceExtensions) {
-    // Print the physical device we will use
-    VkPhysicalDeviceProperties physicalDeviceProperties;
-    vkGetPhysicalDeviceProperties(physicalDevice.physicalDevice, &physicalDeviceProperties);
+VkDevice createVulkanDevice(PhysicalDeviceCreateInfo physicalDeviceCreateInfo, StringSlice deviceExtensions) {
     fprintf(
         stdout,
         "Creating logical device from physical device:\n    Name:                      %s\n    API Version:               %" PRIu32 ".%" PRIu32 ".%" PRIu32 "\n    Graphics Queue Family:     %" PRIu32 "\n    Presentation Queue Family: %" PRIu32 "\n",
-        physicalDeviceProperties.deviceName,
-        VK_VERSION_MAJOR(physicalDeviceProperties.apiVersion),
-        VK_VERSION_MINOR(physicalDeviceProperties.apiVersion),
-        VK_VERSION_PATCH(physicalDeviceProperties.apiVersion),
-        physicalDevice.graphicsQueueFamilyIndex,
-        physicalDevice.presentationQueueFamilyIndex
+        physicalDeviceCreateInfo.physicalDeviceInfo.physicalDeviceProperties.properties.deviceName,
+        VK_VERSION_MAJOR(physicalDeviceCreateInfo.physicalDeviceInfo.physicalDeviceProperties.properties.apiVersion),
+        VK_VERSION_MINOR(physicalDeviceCreateInfo.physicalDeviceInfo.physicalDeviceProperties.properties.apiVersion),
+        VK_VERSION_PATCH(physicalDeviceCreateInfo.physicalDeviceInfo.physicalDeviceProperties.properties.apiVersion),
+        physicalDeviceCreateInfo.graphicsQueueFamilyIndex,
+        physicalDeviceCreateInfo.presentationQueueFamilyIndex
     );
 
     // Add our the graphics and presentation queue families to an array
@@ -335,14 +299,14 @@ VkDevice createVulkanDevice(physicalDeviceInfo physicalDevice, ExtensionNames de
     uint32_t queueFamiliesCount = 0;
     queueFamilies[queueFamiliesCount++] = (VkDeviceQueueCreateInfo){
             .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-            .queueFamilyIndex = physicalDevice.graphicsQueueFamilyIndex,
+            .queueFamilyIndex = physicalDeviceCreateInfo.graphicsQueueFamilyIndex,
             .queueCount       = 1,
             .pQueuePriorities = &queuePriority,
         };
-    if(physicalDevice.graphicsQueueFamilyIndex != physicalDevice.presentationQueueFamilyIndex) {
+    if(physicalDeviceCreateInfo.graphicsQueueFamilyIndex != physicalDeviceCreateInfo.presentationQueueFamilyIndex) {
         queueFamilies[queueFamiliesCount++] = (VkDeviceQueueCreateInfo){
             .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-            .queueFamilyIndex = physicalDevice.presentationQueueFamilyIndex,
+            .queueFamilyIndex = physicalDeviceCreateInfo.presentationQueueFamilyIndex,
             .queueCount       = 1,
             .pQueuePriorities = &queuePriority,
         };
@@ -379,12 +343,12 @@ VkDevice createVulkanDevice(physicalDeviceInfo physicalDevice, ExtensionNames de
         .queueCreateInfoCount = queueFamiliesCount,
         .pQueueCreateInfos = queueFamilies,
         .enabledExtensionCount = deviceExtensions.count,
-        .ppEnabledExtensionNames = deviceExtensions.names
+        .ppEnabledExtensionNames = deviceExtensions.data
     };
 
     // Create the logical device
     VkDevice device = VK_NULL_HANDLE;
-    VkResult result = vkCreateDevice(physicalDevice.physicalDevice, &deviceInfo, NULL, &device);
+    VkResult result = vkCreateDevice(physicalDeviceCreateInfo.physicalDeviceInfo.physicalDevice, &deviceInfo, NULL, &device);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to create logical device: %i\n", result);
         exit(EXIT_FAILURE);

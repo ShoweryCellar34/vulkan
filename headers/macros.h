@@ -1,5 +1,5 @@
-#ifndef CLEANUPMACROS_H
-#define CLEANUPMACROS_H
+#ifndef MACROS_H
+#define MACROS_H
 
 #define DEFINE_CALLBACK_ARGS_0(callback) \
     static void wrapper_##callback(void* voidCastArgs) { \
@@ -78,4 +78,39 @@
         } \
     } while(0)
 
-#endif // CLEANUPMACROS_H
+
+
+#define MAKE_SLICE(label, countType, dataType) \
+    typedef struct { \
+        countType count; \
+        dataType* data; \
+    } label##Slice;
+
+#define SLICE_SIZE(slice) \
+    sizeof(*slice.data) * slice.count
+
+#define SLICE_DESTROY_IF(slice) if(slice.data) {\
+        free(slice.data); \
+        slice.data = NULL; \
+        slice.count = 0; \
+    }
+
+MAKE_SLICE(String, uint32_t, const char*)
+MAKE_SLICE(uint32_t, uint32_t, uint32_t)
+MAKE_SLICE(LayerProperties, uint32_t, VkLayerProperties)
+MAKE_SLICE(ExtensionProperties, uint32_t, VkExtensionProperties)
+MAKE_SLICE(SurfaceFormatKHR, uint32_t, VkSurfaceFormatKHR)
+
+
+
+#define MAKE_OPTIONAL(label, dataType) \
+    typedef struct { \
+        bool set; \
+        dataType data; \
+    } label##Optional;
+
+
+
+#define CLAMP(val, min, max) (((val) < (min)) ? (min) : (((val) > (max)) ? (max) : (val)))
+
+#endif // MACROS_H

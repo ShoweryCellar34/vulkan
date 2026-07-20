@@ -10,26 +10,16 @@
 #include <volk.h>
 
 // Project Headers
+#include <macros.h>
 
-// This struct stores an array of vulkan layer names and the number of them
-typedef struct {
-    const char** names;
-    uint32_t     count;
-} LayerNames;
-
-// This struct stores an array of vulkan layer properties and the number of them
-typedef struct {
-    VkLayerProperties* properties;
-    uint32_t           count;
-} LayerProperties;
 
 // Get the list of vulkan layers and validate them
-LayerNames getVulkanLayersAndValidate(bool debug);
+StringSlice getVulkanLayersAndValidate(bool debug);
 
 // Get the list of layers we are going to use
-LayerNames getVulkanLayers(bool debug);
+StringSlice getVulkanLayers(bool debug);
 
 // Get the list of supported layers
-LayerProperties getSupportedVulkanLayers();
+LayerPropertiesSlice getSupportedVulkanLayers();
 
 #endif // LAYERS_H

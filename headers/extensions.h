@@ -10,32 +10,22 @@
 #include <volk.h>
 
 // Project Headers
+#include <macros.h>
 
-// This struct stores an array of vulkan extension names and the number of them
-typedef struct {
-    const char** names;
-    uint32_t     count;
-} ExtensionNames;
-
-// This struct stores an array of vulkan extension properties and the number of them
-typedef struct {
-    VkExtensionProperties* properties;
-    uint32_t               count;
-} ExtensionProperties;
 
 // Get the list of vulkan extensions and validate them
-ExtensionNames getVulkanExtensionsAndValidate(bool debug);
+StringSlice getVulkanExtensionsAndValidate(bool debug);
 
 // Get the list of extensions we are going to use
-ExtensionNames getVulkanExtensions(bool debug);
+StringSlice getVulkanExtensions(bool debug);
 
 // Get the list of supported extensions
-ExtensionProperties getSupportedVulkanExtensions();
+ExtensionPropertiesSlice getSupportedVulkanExtensions();
 
 // Get the list of device extensions we are going to use
-ExtensionNames getVulkanDeviceExtensions();
+StringSlice getVulkanDeviceExtensions();
 
 // Get the list of supported device extensions
-ExtensionProperties getSupportedVulkanDeviceExtensions(VkPhysicalDevice physicalDevice);
+ExtensionPropertiesSlice getSupportedVulkanDeviceExtensions(VkPhysicalDevice physicalDevice);
 
 #endif // EXTENSIONS_H

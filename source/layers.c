@@ -10,70 +10,61 @@
 // Project Headers
 #include <cleanup.h>
 
-LayerNames getVulkanLayersAndValidate(bool debug) {
+StringSlice getVulkanLayersAndValidate(bool debug) {
     // Get the layers array
-    LayerNames layers = getVulkanLayers(debug);
+    StringSlice layers = getVulkanLayers(debug);
     fprintf(stdout, "Successfully got list of required layers:\n");
 
     // Print all the layers we will use
     for(uint32_t i = 0; i < layers.count; i++) {
-        fprintf(stdout, "    %s\n", layers.names[i]);
+        fprintf(stdout, "    %s\n", layers.data[i]);
     }
 
     // Get the supported layers array and register its cleanup method
-    LayerProperties supportedLayers = getSupportedVulkanLayers();
+    LayerPropertiesSlice supportedLayers = getSupportedVulkanLayers();
     fprintf(stdout, "Successfully got list of supported layers:\n");
 
     // Print all the layers supported
     for(uint32_t i = 0; i < supportedLayers.count; i++) {
-        fprintf(stdout, "    %s\n", supportedLayers.properties[i].layerName);
+        fprintf(stdout, "    %s\n", supportedLayers.data[i].layerName);
     }
 
     // Ensure all requested layers are supported
     for(uint32_t i = 0; i < layers.count; i++) {
         bool layerSupported = false;
         for(uint32_t j = 0; j < supportedLayers.count; j++) {
-            if(!strcmp(layers.names[i], supportedLayers.properties[j].layerName)) {
+            if(!strcmp(layers.data[i], supportedLayers.data[j].layerName)) {
                 layerSupported = true;
             }
         }
         if(layerSupported == false) {
             fprintf(stderr, "Not all requested layers are supported\n");
-            free(supportedLayers.properties);
+            free(supportedLayers.data);
             exit(EXIT_FAILURE);
         }
     }
     fprintf(stdout, "All required layers are supported\n");
 
     // Free the supported layers array
-    free(supportedLayers.properties);
+    free(supportedLayers.data);
 
     // Return the list of layers
     return layers;
 }
 
-LayerNames getVulkanLayers(bool debug) {
-    // If we are in debug build return the khronos validation layer, and if we are not in a debug build we return NULL and set layer count to 1 and 0 respectively
-    if(debug == true) {
-        static const char* layerNamesArray[] = {
-            "VK_LAYER_KHRONOS_validation"
-        };
-        static LayerNames layers = {
-            .names = layerNamesArray,
-            .count = 1,
-        };
-        // Retrun the list of debug layers
-        return layers;
-    } else {
-        static LayerNames layers = {0};
-        // Retrun the list of layers
-        return layers;
-    }
+StringSlice getVulkanLayers(bool debug) {
+    static const char* layerNames[] = {
+        "VK_LAYER_KHRONOS_validation"
+    };
+    return (StringSlice){
+        .count = (debug == true ? 1 : 0),
+        .data  = layerNames
+    };
 }
 
-LayerProperties getSupportedVulkanLayers() {
+LayerPropertiesSlice getSupportedVulkanLayers() {
     // Get the length of the supported layers array
-    LayerProperties supportedLayers = {0};
+    LayerPropertiesSlice supportedLayers = {0};
     VkResult result = vkEnumerateInstanceLayerProperties(&supportedLayers.count, NULL);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to get number of supported layers: %i\n", result);
@@ -86,14 +77,14 @@ LayerProperties getSupportedVulkanLayers() {
     }
 
     // Allocate the supported layers array
-    supportedLayers.properties = malloc(sizeof(*supportedLayers.properties) * supportedLayers.count);
-    if(supportedLayers.properties == NULL) {
-        fprintf(stderr, "Failed to allocate supported layers array of size %zu\n", sizeof(*supportedLayers.properties) * supportedLayers.count);
+    supportedLayers.data = malloc(sizeof(*supportedLayers.data) * supportedLayers.count);
+    if(supportedLayers.data == NULL) {
+        fprintf(stderr, "Failed to allocate supported layers array of size %zu\n", SLICE_SIZE(supportedLayers));
         exit(EXIT_FAILURE);
     }
 
     // Fill the supported layers array with the list of supported layers
-    result = vkEnumerateInstanceLayerProperties(&supportedLayers.count, supportedLayers.properties);
+    result = vkEnumerateInstanceLayerProperties(&supportedLayers.count, supportedLayers.data);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to get supported layers: %i\n", result);
         exit(EXIT_FAILURE);
