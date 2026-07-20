@@ -615,29 +615,31 @@ int main(int argc, char* argv[]) {
         .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .commandPool        = graphicsCommandPool,
         .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = 1
+        .commandBufferCount = MAX_FRAMES_IN_FLIGHT
     };
 
-    VkCommandBuffer graphicsCommandBuffer = VK_NULL_HANDLE;
-    VkCommandBuffer presentationCommandBuffer = VK_NULL_HANDLE;
-    result = vkAllocateCommandBuffers(device, &commandBufferAllocationInfo, &graphicsCommandBuffer);
+    VkCommandBuffer graphicsCommandBuffers[MAX_FRAMES_IN_FLIGHT]     = {VK_NULL_HANDLE};
+    VkCommandBuffer presentationCommandBuffers[MAX_FRAMES_IN_FLIGHT] = {VK_NULL_HANDLE};
+    result = vkAllocateCommandBuffers(device, &commandBufferAllocationInfo, graphicsCommandBuffers);
     if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to allocate graphics command buffer: %i\n", result);
+        fprintf(stderr, "Failed to allocate %i graphics command buffer(s): %i\n", MAX_FRAMES_IN_FLIGHT, result);
         exit(EXIT_FAILURE);
     }
     fprintf(stdout, "Allocated graphics command buffer\n");
 
     if(physicalDeviceCreateInfo.graphicsQueueFamilyIndex != physicalDeviceCreateInfo.presentationQueueFamilyIndex) {
         commandBufferAllocationInfo.commandPool = presentationCommandPool;
-        result = vkAllocateCommandBuffers(device, &commandBufferAllocationInfo, &presentationCommandBuffer);
+        result = vkAllocateCommandBuffers(device, &commandBufferAllocationInfo, presentationCommandBuffers);
         if(result != VK_SUCCESS) {
-            fprintf(stderr, "Failed to allocate presentation command buffer: %i\n", result);
+            fprintf(stderr, "Failed to allocate %i presentation command buffer(s): %i\n", MAX_FRAMES_IN_FLIGHT, result);
             exit(EXIT_FAILURE);
         }
         fprintf(stdout, "Allocated presentation command buffer\n");
     } else {
-        presentationCommandBuffer = graphicsCommandBuffer;
-        fprintf(stdout, "Reusing graphics command buffer as presentation command buffer\n");
+        for(uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            presentationCommandBuffers[i] = graphicsCommandBuffers[i];
+        }
+        fprintf(stdout, "Reused graphics command buffer as presentation command buffer\n");
     }
 
     VkSemaphoreCreateInfo semaphoreCreateInfo = {
@@ -648,32 +650,40 @@ int main(int argc, char* argv[]) {
         .flags = VK_FENCE_CREATE_SIGNALED_BIT
     };
 
-    VkSemaphore presentCompleteSemaphore = VK_NULL_HANDLE;
-    VkSemaphore renderFinishedSemaphore  = VK_NULL_HANDLE;
-    VkFence     drawFence                = VK_NULL_HANDLE;
+    VkSemaphore presentCompleteSemaphores[MAX_FRAMES_IN_FLIGHT] = {VK_NULL_HANDLE};
+    VkSemaphore renderFinishedSemaphores[MAX_FRAMES_IN_FLIGHT]  = {VK_NULL_HANDLE};
+    VkFence     drawFences[MAX_FRAMES_IN_FLIGHT]                = {VK_NULL_HANDLE};
 
-    result = vkCreateSemaphore(device, &semaphoreCreateInfo, NULL, &presentCompleteSemaphore);
-    if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create presentation semaphore: %i\n", result);
-        exit(EXIT_FAILURE);
+    for(uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        result = vkCreateSemaphore(device, &semaphoreCreateInfo, NULL, &presentCompleteSemaphores[i]);
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Failed to create presentation semaphore %i: %i\n", i, result);
+            exit(EXIT_FAILURE);
+        }
+        PUSH_CLEANUP_ARGS_3(vkDestroySemaphore, device, presentCompleteSemaphores[i], NULL);
     }
-    PUSH_CLEANUP_ARGS_3(vkDestroySemaphore, device, presentCompleteSemaphore, NULL);
 
-    result = vkCreateSemaphore(device, &semaphoreCreateInfo, NULL, &renderFinishedSemaphore);
-    if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create rendering semaphore: %i\n", result);
-        exit(EXIT_FAILURE);
+    for(uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        result = vkCreateSemaphore(device, &semaphoreCreateInfo, NULL, &renderFinishedSemaphores[i]);
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Failed to create render semaphore %i: %i\n", i, result);
+            exit(EXIT_FAILURE);
+        }
+        PUSH_CLEANUP_ARGS_3(vkDestroySemaphore, device, renderFinishedSemaphores[i], NULL);
     }
-    PUSH_CLEANUP_ARGS_3(vkDestroySemaphore, device, renderFinishedSemaphore, NULL);
 
-    result = vkCreateFence(device, &fenceCreateInfo, NULL, &drawFence);
-    if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create draw fence: %i\n", result);
-        exit(EXIT_FAILURE);
+    for(uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        result = vkCreateFence(device, &fenceCreateInfo, NULL, &drawFences[i]);
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Failed to create draw fence %i: %i\n", i, result);
+            exit(EXIT_FAILURE);
+        }
+        PUSH_CLEANUP_ARGS_3(vkDestroyFence, device, drawFences[i], NULL);
     }
-    PUSH_CLEANUP_ARGS_3(vkDestroyFence, device, drawFence, NULL);
 
     fprintf(stdout, "Created essential semaphores/fences\n");
+
+    uint32_t frameIndex = 0;
 
     // Main application loop
     while(!glfwWindowShouldClose(window)) {
@@ -681,12 +691,12 @@ int main(int argc, char* argv[]) {
         glfwPollEvents();
 
         // Wait for previous frame to finish drawing
-        result = vkWaitForFences(device, 1, &drawFence, VK_TRUE, UINT64_MAX);
+        result = vkWaitForFences(device, 1, &drawFences, VK_TRUE, UINT64_MAX);
         if(result != VK_SUCCESS) {
             fprintf(stderr, "Failed to wait for drawing fence: %i\n", result);
             exit(EXIT_FAILURE);
         }
-        result = vkResetFences(device, 1, &drawFence);
+        result = vkResetFences(device, 1, &drawFences);
         if(result != VK_SUCCESS) {
             fprintf(stderr, "Failed to reset drawing fence: %i\n", result);
             exit(EXIT_FAILURE);
