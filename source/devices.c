@@ -123,6 +123,12 @@ PhysicalDeviceInfo getVulkanPhysicalDeviceInfo(VkPhysicalDevice physicalDevice, 
         }
     }
 
+    VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDeviceInfo.physicalDevice, physicalDeviceInfo.surface, &physicalDeviceInfo.surfaceCapabilities);
+    if(result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to surface capabilities: %i\n", result);
+        exit(EXIT_FAILURE);
+    }
+
     return physicalDeviceInfo;
 }
 

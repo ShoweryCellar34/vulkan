@@ -19,6 +19,7 @@ typedef struct {
     VkPhysicalDeviceProperties2 physicalDeviceProperties;
     ExtensionPropertiesSlice    supportedExtensions;
     SurfaceFormatKHRSlice       surfaceFormats;
+    VkSurfaceCapabilitiesKHR    surfaceCapabilities;
     uint32_t                    queueFamilyCount;
     VkQueueFamilyProperties2*   queueFamilyProperties;
     VkBool32*                   queueFamiliesPresentationSupport;

@@ -8,6 +8,13 @@
 
 // Project Headers
 
+bool windowResizedFlag = false;
+
+void resizeCallback(GLFWwindow* window, int width, int height) {
+    window; width; height;
+    windowResizedFlag = true;
+}
+
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)  {
     window; key; scancode; action; mods;
     if(key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)  {
@@ -32,6 +39,7 @@ GLFWwindow* createGLFWWindow(const char* title, int width, int height) {
 
     // Set the kay callback for the window so we can capture keyboard events
     glfwSetKeyCallback(window, keyCallback);
+    glfwSetFramebufferSizeCallback(window, resizeCallback);
 
     // Return the window
     return window;

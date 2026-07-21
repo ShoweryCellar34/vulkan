@@ -100,6 +100,9 @@ MAKE_SLICE(uint32_t, uint32_t, uint32_t)
 MAKE_SLICE(LayerProperties, uint32_t, VkLayerProperties)
 MAKE_SLICE(ExtensionProperties, uint32_t, VkExtensionProperties)
 MAKE_SLICE(SurfaceFormatKHR, uint32_t, VkSurfaceFormatKHR)
+MAKE_SLICE(SurfaceCapabilitiesKHR, uint32_t, VkSurfaceCapabilitiesKHR)
+MAKE_SLICE(Image, uint32_t, VkImage)
+MAKE_SLICE(ImageView, uint32_t, VkImageView)
 
 
 

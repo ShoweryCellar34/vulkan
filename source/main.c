@@ -36,7 +36,7 @@ DEFINE_CALLBACK_ARGS_3(vkDestroySemaphore, VkDevice, VkSemaphore, const VkAlloca
 DEFINE_CALLBACK_ARGS_3(vkDestroyFence, VkDevice, VkFence, const VkAllocationCallbacks*)
 
 #define WINDOW_WIDTH         800
-#define WINDOW_HEIGHT        450
+#define WINDOW_HEIGHT        800
 #define MAX_FRAMES_IN_FLIGHT 2
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(
@@ -275,27 +275,19 @@ int main(int argc, char* argv[]) {
     PUSH_CLEANUP_ARGS_1(vmaDestroyAllocator, allocator);
     fprintf(stdout, "Created the VMA allocator\n");
 
-    // Get the capabilities of the surface
-    VkSurfaceCapabilitiesKHR surfaceCapabilities;
-    result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDeviceCreateInfo.physicalDeviceInfo.physicalDevice, surface, &surfaceCapabilities);
-    if(result != VK_SUCCESS) {
-        fprintf(stdout, "Failed to get surface capabilities: %i\n", result);
-        exit(EXIT_FAILURE);
-    }
-
     // Set the number of images that should be in the swapchain
-    uint32_t swapchainImageCount = surfaceCapabilities.minImageCount + (surfaceCapabilities.maxImageCount > surfaceCapabilities.minImageCount || surfaceCapabilities.maxImageCount == 0 ? 1 : 0);
+    uint32_t swapchainImageCount = physicalDeviceCreateInfo.physicalDeviceInfo.surfaceCapabilities.minImageCount + (physicalDeviceCreateInfo.physicalDeviceInfo.surfaceCapabilities.maxImageCount > physicalDeviceCreateInfo.physicalDeviceInfo.surfaceCapabilities.minImageCount || physicalDeviceCreateInfo.physicalDeviceInfo.surfaceCapabilities.maxImageCount == 0 ? 1 : 0);
 
     // Set the dimensions of the swapchain
     VkExtent2D swapchainExtent;
-    if(surfaceCapabilities.currentExtent.width == UINT32_MAX) {
+    if(physicalDeviceCreateInfo.physicalDeviceInfo.surfaceCapabilities.currentExtent.width == UINT32_MAX) {
         int windowWidth, windowHeight;
         glfwGetFramebufferSize(window, &windowWidth, &windowHeight);
 
-        swapchainExtent.width = CLAMP((uint32_t)windowWidth, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
-        swapchainExtent.height = CLAMP((uint32_t)windowHeight, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+        swapchainExtent.width = CLAMP((uint32_t)windowWidth, physicalDeviceCreateInfo.physicalDeviceInfo.surfaceCapabilities.minImageExtent.width, physicalDeviceCreateInfo.physicalDeviceInfo.surfaceCapabilities.maxImageExtent.width);
+        swapchainExtent.height = CLAMP((uint32_t)windowHeight, physicalDeviceCreateInfo.physicalDeviceInfo.surfaceCapabilities.minImageExtent.height, physicalDeviceCreateInfo.physicalDeviceInfo.surfaceCapabilities.maxImageExtent.height);
     } else {
-        swapchainExtent = surfaceCapabilities.currentExtent;
+        swapchainExtent = physicalDeviceCreateInfo.physicalDeviceInfo.surfaceCapabilities.currentExtent;
     }
 
     // Create a struct containing the settings for the swapchain
@@ -309,7 +301,7 @@ int main(int argc, char* argv[]) {
         .imageArrayLayers = 1,
         .imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
         .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        .preTransform     = surfaceCapabilities.currentTransform,
+        .preTransform     = physicalDeviceCreateInfo.physicalDeviceInfo.surfaceCapabilities.currentTransform,
         .compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
         .presentMode      = VK_PRESENT_MODE_FIFO_KHR,
         .clipped          = true
@@ -553,7 +545,7 @@ int main(int argc, char* argv[]) {
 
     VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo = {
         .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
-        .colorAttachmentCount = 1,
+        .colorAttachmentCount    = 1,
         .pColorAttachmentFormats = &physicalDeviceCreateInfo.physicalDeviceInfo.surfaceFormats.data[physicalDeviceCreateInfo.surfaceFormatIndex].format
     };
 
@@ -650,39 +642,43 @@ int main(int argc, char* argv[]) {
         .flags = VK_FENCE_CREATE_SIGNALED_BIT
     };
 
-    VkSemaphore presentCompleteSemaphores[MAX_FRAMES_IN_FLIGHT] = {VK_NULL_HANDLE};
-    VkSemaphore renderFinishedSemaphores[MAX_FRAMES_IN_FLIGHT]  = {VK_NULL_HANDLE};
-    VkFence     drawFences[MAX_FRAMES_IN_FLIGHT]                = {VK_NULL_HANDLE};
+    VkSemaphore  presentCompleteSemaphores[MAX_FRAMES_IN_FLIGHT] = {VK_NULL_HANDLE};
+    VkFence      drawFences[MAX_FRAMES_IN_FLIGHT]                = {VK_NULL_HANDLE};
 
     for(uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         result = vkCreateSemaphore(device, &semaphoreCreateInfo, NULL, &presentCompleteSemaphores[i]);
         if(result != VK_SUCCESS) {
-            fprintf(stderr, "Failed to create presentation semaphore %i: %i\n", i, result);
+            fprintf(stderr, "Failed to create presentation semaphore %" PRIu32 ": %i\n", i, result);
             exit(EXIT_FAILURE);
         }
         PUSH_CLEANUP_ARGS_3(vkDestroySemaphore, device, presentCompleteSemaphores[i], NULL);
-    }
 
-    for(uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        result = vkCreateSemaphore(device, &semaphoreCreateInfo, NULL, &renderFinishedSemaphores[i]);
-        if(result != VK_SUCCESS) {
-            fprintf(stderr, "Failed to create render semaphore %i: %i\n", i, result);
-            exit(EXIT_FAILURE);
-        }
-        PUSH_CLEANUP_ARGS_3(vkDestroySemaphore, device, renderFinishedSemaphores[i], NULL);
-    }
-
-    for(uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         result = vkCreateFence(device, &fenceCreateInfo, NULL, &drawFences[i]);
         if(result != VK_SUCCESS) {
-            fprintf(stderr, "Failed to create draw fence %i: %i\n", i, result);
+            fprintf(stderr, "Failed to create draw fence %" PRIu32 ": %i\n", i, result);
             exit(EXIT_FAILURE);
         }
         PUSH_CLEANUP_ARGS_3(vkDestroyFence, device, drawFences[i], NULL);
     }
 
+    VkSemaphore* renderFinishedSemaphores = malloc(sizeof(VkSemaphore) * swapchainImagesCount);
+    if(renderFinishedSemaphores == NULL) {
+        fprintf(stderr, "Failed to allocate presentation semaphores array of size %zu\n", sizeof(VkSemaphore) * swapchainImagesCount);
+        exit(EXIT_FAILURE);
+    }
+    pushCleanupCallback(free, renderFinishedSemaphores);
+    for(uint32_t i = 0; i < swapchainImagesCount; i++) {
+        result = vkCreateSemaphore(device, &semaphoreCreateInfo, NULL, &renderFinishedSemaphores[i]);
+        if(result != VK_SUCCESS) {
+            fprintf(stderr, "Failed to create render semaphore %" PRIu32 ": %i\n", i, result);
+            exit(EXIT_FAILURE);
+        }
+        PUSH_CLEANUP_ARGS_3(vkDestroySemaphore, device, renderFinishedSemaphores[i], NULL);
+    }
+
     fprintf(stdout, "Created essential semaphores/fences\n");
 
+    // Store the current frame were on for frames in flight support
     uint32_t frameIndex = 0;
 
     // Main application loop
@@ -691,20 +687,20 @@ int main(int argc, char* argv[]) {
         glfwPollEvents();
 
         // Wait for previous frame to finish drawing
-        result = vkWaitForFences(device, 1, &drawFences, VK_TRUE, UINT64_MAX);
+        result = vkWaitForFences(device, 1, &drawFences[frameIndex], VK_TRUE, UINT64_MAX);
         if(result != VK_SUCCESS) {
-            fprintf(stderr, "Failed to wait for drawing fence: %i\n", result);
+            fprintf(stderr, "Failed to wait for drawing fence %" PRIu32 ": %i\n", frameIndex, result);
             exit(EXIT_FAILURE);
         }
-        result = vkResetFences(device, 1, &drawFences);
+        result = vkResetFences(device, 1, &drawFences[frameIndex]);
         if(result != VK_SUCCESS) {
-            fprintf(stderr, "Failed to reset drawing fence: %i\n", result);
+            fprintf(stderr, "Failed to reset drawing fence %" PRIu32 ": %i\n", frameIndex, result);
             exit(EXIT_FAILURE);
         }
 
         VkAcquireNextImageInfoKHR swapchainNextImageAcquisitionInfo = {
             .sType      = VK_STRUCTURE_TYPE_ACQUIRE_NEXT_IMAGE_INFO_KHR,
-            .semaphore  = presentCompleteSemaphore,
+            .semaphore  = presentCompleteSemaphores[frameIndex],
             .swapchain  = swapchain,
             .timeout    = UINT64_MAX,
             .deviceMask = 0x1
@@ -720,14 +716,14 @@ int main(int argc, char* argv[]) {
         VkCommandBufferBeginInfo graphicsCommandBufferBeginInfo = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
         };
-        result = vkBeginCommandBuffer(graphicsCommandBuffer, &graphicsCommandBufferBeginInfo);
+        result = vkBeginCommandBuffer(graphicsCommandBuffers[frameIndex], &graphicsCommandBufferBeginInfo);
         if(result != VK_SUCCESS) {
             fprintf(stderr, "Failed to begin graphics command buffer: %i\n", result);
             exit(EXIT_FAILURE);
         }
 
         transitionImageLayout(
-            graphicsCommandBuffer,
+            graphicsCommandBuffers[frameIndex],
             swapchainImages[swapchainIndex],
             VK_IMAGE_LAYOUT_UNDEFINED,
             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -768,9 +764,9 @@ int main(int argc, char* argv[]) {
             .pColorAttachments    = &attachmentInfo
         };
 
-        vkCmdBeginRendering(graphicsCommandBuffer, &renderingInfo);
+        vkCmdBeginRendering(graphicsCommandBuffers[frameIndex], &renderingInfo);
 
-        vkCmdBindPipeline(graphicsCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+        vkCmdBindPipeline(graphicsCommandBuffers[frameIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 
         VkViewport viewport = {
             0.0f,
@@ -788,15 +784,15 @@ int main(int argc, char* argv[]) {
             swapchainExtent
         };
 
-        vkCmdSetViewport(graphicsCommandBuffer, 0, 1, &viewport);
-        vkCmdSetScissor(graphicsCommandBuffer, 0, 1, &scissor);
+        vkCmdSetViewport(graphicsCommandBuffers[frameIndex], 0, 1, &viewport);
+        vkCmdSetScissor(graphicsCommandBuffers[frameIndex], 0, 1, &scissor);
 
-        vkCmdDraw(graphicsCommandBuffer, 3, 1, 0, 0);
+        vkCmdDraw(graphicsCommandBuffers[frameIndex], 6, 1, 0, 0);
 
-        vkCmdEndRendering(graphicsCommandBuffer);
+        vkCmdEndRendering(graphicsCommandBuffers[frameIndex]);
 
         transitionImageLayout(
-            graphicsCommandBuffer,
+            graphicsCommandBuffers[frameIndex],
             swapchainImages[swapchainIndex],
             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
@@ -806,7 +802,7 @@ int main(int argc, char* argv[]) {
             VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT
         );
 
-        result = vkEndCommandBuffer(graphicsCommandBuffer);
+        result = vkEndCommandBuffer(graphicsCommandBuffers[frameIndex]);
         if(result != VK_SUCCESS) {
             fprintf(stderr, "Failed to end graphics command buffer: %i\n", result);
             exit(EXIT_FAILURE);
@@ -816,26 +812,28 @@ int main(int argc, char* argv[]) {
         const VkSubmitInfo submitInfo = {
             .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
             .waitSemaphoreCount   = 1,
-            .pWaitSemaphores      = &presentCompleteSemaphore,
+            .pWaitSemaphores      = &presentCompleteSemaphores[frameIndex],
             .pWaitDstStageMask    = &waitDestinationStageMask,
             .commandBufferCount   = 1,
-            .pCommandBuffers      = &graphicsCommandBuffer,
+            .pCommandBuffers      = &graphicsCommandBuffers[frameIndex],
             .signalSemaphoreCount = 1,
-            .pSignalSemaphores    = &renderFinishedSemaphore
+            .pSignalSemaphores    = &renderFinishedSemaphores[swapchainIndex]
         };
 
         vkQueueWaitIdle(presentationQueue);
 
-        result = vkQueueSubmit(graphicsQueue, 1, &submitInfo, drawFence);
+        result = vkQueueSubmit(graphicsQueue, 1, &submitInfo, drawFences[frameIndex]);
         if(result != VK_SUCCESS) {
             fprintf(stderr, "Failed to submit graphics command buffer queue: %i\n", result);
             exit(EXIT_FAILURE);
         }
 
+        frameIndex = (frameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
+
         const VkPresentInfoKHR presentInfo = {
             .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
             .waitSemaphoreCount = 1,
-            .pWaitSemaphores    = &renderFinishedSemaphore,
+            .pWaitSemaphores    = &renderFinishedSemaphores[swapchainIndex],
             .swapchainCount     = 1,
             .pSwapchains        = &swapchain,
             .pImageIndices      = &swapchainIndex
