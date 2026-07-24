@@ -20,10 +20,10 @@ StringSlice getVulkanExtensionsAndValidate(bool debug);
 StringSlice getVulkanExtensions(bool debug);
 
 // Get the list of supported extensions
-ExtensionPropertiesSlice getSupportedVulkanExtensions();
+ExtensionPropertiesSlice getSupportedVulkanExtensions(void);
 
 // Get the list of device extensions we are going to use
-StringSlice getVulkanDeviceExtensions();
+StringSlice getVulkanDeviceExtensions(void);
 
 // Get the list of supported device extensions
 ExtensionPropertiesSlice getSupportedVulkanDeviceExtensions(VkPhysicalDevice physicalDevice);

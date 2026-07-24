@@ -62,7 +62,7 @@ StringSlice getVulkanLayers(bool debug) {
     };
 }
 
-LayerPropertiesSlice getSupportedVulkanLayers() {
+LayerPropertiesSlice getSupportedVulkanLayers(void) {
     // Get the length of the supported layers array
     LayerPropertiesSlice supportedLayers = {0};
     VkResult result = vkEnumerateInstanceLayerProperties(&supportedLayers.count, NULL);

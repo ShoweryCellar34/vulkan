@@ -10,13 +10,13 @@
 
 bool windowResizedFlag = false;
 
-void resizeCallback(GLFWwindow* window, int width, int height) {
-    window; width; height;
+static void resizeCallback(GLFWwindow* window, int width, int height) {
+    (void)window; (void)width; (void)height;
     windowResizedFlag = true;
 }
 
-void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)  {
-    window; key; scancode; action; mods;
+static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)  {
+    (void)window; (void)key; (void)scancode; (void)action; (void)mods;
     if(key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)  {
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     }

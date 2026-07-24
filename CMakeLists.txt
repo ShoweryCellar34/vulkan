@@ -1,6 +1,6 @@
 # Set required cmake version and define project
 cmake_minimum_required(VERSION 3.15)
-project(vulkanTestApp LANGUAGES C VERSION 0.0.1)
+project(vulkanTestApp LANGUAGES C CXX VERSION 0.0.1)
 
 # Set the C Standard Settings
 set(CMAKE_C_STANDARD 11)
@@ -105,14 +105,15 @@ FetchContent_Declare(
 # Download dependencies
 FetchContent_MakeAvailable(volk vma glfw cglm stb)
 
-add_library(VulkanMemoryAllocatorImplementation vma.cpp)
+add_library(VulkanMemoryAllocatorImplementation implementations/vma.cpp)
 target_link_libraries(VulkanMemoryAllocatorImplementation PRIVATE volk VulkanMemoryAllocator)
+target_include_directories(VulkanMemoryAllocatorImplementation PUBLIC ${stb_SOURCE_DIR}/include)
 
-add_library(stb stb.c)
+add_library(stb implementations/stb.c)
 target_include_directories(stb PUBLIC ${stb_SOURCE_DIR})
 
 # Link dependencies to executable
-target_link_libraries(${PROJECT_NAME} PRIVATE volk VulkanMemoryAllocator VulkanMemoryAllocatorImplementation glfw cglm stb)
+target_link_libraries(${PROJECT_NAME} PRIVATE volk VulkanMemoryAllocatorImplementation glfw cglm stb)
 
 # Set the include directories
 target_include_directories(${PROJECT_NAME} PRIVATE 

@@ -20,6 +20,6 @@ StringSlice getVulkanLayersAndValidate(bool debug);
 StringSlice getVulkanLayers(bool debug);
 
 // Get the list of supported layers
-LayerPropertiesSlice getSupportedVulkanLayers();
+LayerPropertiesSlice getSupportedVulkanLayers(void);
 
 #endif // LAYERS_H

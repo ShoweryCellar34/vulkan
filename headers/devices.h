@@ -29,23 +29,36 @@ MAKE_SLICE(PhysicalDeviceInfo, uint32_t, PhysicalDeviceInfo)
 
 typedef struct {
     PhysicalDeviceInfo physicalDeviceInfo;
+    StringSlice        deviceExtensions;
     uint32_t           score;
 
     uint32_t           surfaceFormatIndex;
     uint32_t           graphicsQueueFamilyIndex;
     uint32_t           presentationQueueFamilyIndex;
-} PhysicalDeviceCreateInfo;
+} LogicalDeviceCreateInfo;
+
+typedef struct {
+    PhysicalDeviceInfo physicalDeviceInfo;
+    VkDevice           logicalDevice;
+
+    VkQueue            graphicsQueue;
+    VkQueue            presentationQueue;
+
+    uint32_t           surfaceFormatIndex;
+    uint32_t           graphicsQueueFamilyIndex;
+    uint32_t           presentationQueueFamilyIndex;
+} LogicalDeviceInfo;
 
 // Destroys the members of a valid physical device info structure safely
 void destroyVulkanPhysicalDeviceInfo(PhysicalDeviceInfo* physicalDeviceInfo);
 
 // Get the most suitable vulkan physical device and return it and its configuration
-PhysicalDeviceCreateInfo getSuitableVulkanPhysicalDevice(VkInstance instance, VkSurfaceKHR surface, StringSlice deviceExtensions, SurfaceFormatKHRSlice surfaceFormats);
+LogicalDeviceCreateInfo getSuitableVulkanPhysicalDevice(VkInstance instance, VkSurfaceKHR surface, StringSlice deviceExtensions, SurfaceFormatKHRSlice surfaceFormats);
 
 // Get the list of supported physical devices
 PhysicalDeviceInfoSlice getVulkanPhysicalDeviceInfos(VkInstance instance, VkSurfaceKHR surface);
 
 // Creates and return a vulkan logical device
-VkDevice createVulkanDevice(PhysicalDeviceCreateInfo physicalDeviceCreateInfo, StringSlice deviceExtensions);
+LogicalDeviceInfo createVulkanDevice(LogicalDeviceCreateInfo physicalDeviceCreateInfo);
 
 #endif // DEVICES_H

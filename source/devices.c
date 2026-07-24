@@ -25,7 +25,7 @@ void destroyVulkanPhysicalDeviceInfo(PhysicalDeviceInfo* physicalDeviceInfo) {
     }
 }
 
-PhysicalDeviceInfo getVulkanPhysicalDeviceInfo(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) {
+static PhysicalDeviceInfo getVulkanPhysicalDeviceInfo(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) {
     // Define the physical device info structure and the pointer chain for physical device properties 2 to get all the properties
     PhysicalDeviceInfo physicalDeviceInfo = {
         .physicalDevice = physicalDevice,
@@ -132,14 +132,15 @@ PhysicalDeviceInfo getVulkanPhysicalDeviceInfo(VkPhysicalDevice physicalDevice, 
     return physicalDeviceInfo;
 }
 
-PhysicalDeviceCreateInfo getVulkanPhysicalDeviceSuitability(PhysicalDeviceInfo physicalDeviceInfo, StringSlice deviceExtensions, SurfaceFormatKHRSlice surfaceFormats) {
-    PhysicalDeviceCreateInfo physicalDeviceCreateInfo = {
-        .physicalDeviceInfo = physicalDeviceInfo
+static LogicalDeviceCreateInfo getVulkanPhysicalDeviceSuitability(PhysicalDeviceInfo physicalDeviceInfo, StringSlice deviceExtensions, SurfaceFormatKHRSlice surfaceFormats) {
+    LogicalDeviceCreateInfo logicalDeviceCreateInfo = {
+        .physicalDeviceInfo = physicalDeviceInfo,
+        .deviceExtensions   = deviceExtensions,
     };
 
     // Ensure the current physical device supports at least vulkan 1.4
     if(physicalDeviceInfo.physicalDeviceProperties.properties.apiVersion < VK_API_VERSION_1_4) {
-        return (PhysicalDeviceCreateInfo){
+        return (LogicalDeviceCreateInfo){
             .physicalDeviceInfo = physicalDeviceInfo
         };
     }
@@ -153,7 +154,7 @@ PhysicalDeviceCreateInfo getVulkanPhysicalDeviceSuitability(PhysicalDeviceInfo p
             }
         }
         if(surfaceFormatDesired) {
-            physicalDeviceCreateInfo.surfaceFormatIndex = i;
+            logicalDeviceCreateInfo.surfaceFormatIndex = i;
             break;
         }
     }
@@ -168,7 +169,7 @@ PhysicalDeviceCreateInfo getVulkanPhysicalDeviceSuitability(PhysicalDeviceInfo p
         }
         // Ensure that the device extension were checking is supported by the physical device
         if(deviceExtensionSupported == false) {
-            return (PhysicalDeviceCreateInfo){
+            return (LogicalDeviceCreateInfo){
                 .physicalDeviceInfo = physicalDeviceInfo
             };
         }
@@ -178,11 +179,11 @@ PhysicalDeviceCreateInfo getVulkanPhysicalDeviceSuitability(PhysicalDeviceInfo p
     uint8_t breakFlag = 0;
     for(uint32_t i = 0; i < physicalDeviceInfo.queueFamilyCount; i++) {
         if((physicalDeviceInfo.queueFamilyProperties[i].queueFamilyProperties.queueFlags & VK_QUEUE_GRAPHICS_BIT) == 1) {
-            physicalDeviceCreateInfo.graphicsQueueFamilyIndex = i;
+            logicalDeviceCreateInfo.graphicsQueueFamilyIndex = i;
             breakFlag = 1;
             for(uint32_t j = 0; j < physicalDeviceInfo.queueFamilyCount; j++) {
                 if(physicalDeviceInfo.queueFamiliesPresentationSupport[j] == VK_TRUE) {
-                    physicalDeviceCreateInfo.presentationQueueFamilyIndex = j;
+                    logicalDeviceCreateInfo.presentationQueueFamilyIndex = j;
                     breakFlag = 2;
                     if(i == j) {
                         breakFlag = 3;
@@ -198,27 +199,27 @@ PhysicalDeviceCreateInfo getVulkanPhysicalDeviceSuitability(PhysicalDeviceInfo p
 
     // If we haven't found every needed queue family on the same physical device we set the graphics and presentation queues to not found
     if(breakFlag < 2) {
-        physicalDeviceCreateInfo.graphicsQueueFamilyIndex     = 0;
-        physicalDeviceCreateInfo.presentationQueueFamilyIndex = 0;
-        return (PhysicalDeviceCreateInfo){
+        logicalDeviceCreateInfo.graphicsQueueFamilyIndex     = 0;
+        logicalDeviceCreateInfo.presentationQueueFamilyIndex = 0;
+        return (LogicalDeviceCreateInfo){
             .physicalDeviceInfo = physicalDeviceInfo
         };
     }
 
     // If there is one queue family that supports both graphics and presentation we add 1 the score
     if(breakFlag == 3) {
-        physicalDeviceCreateInfo.score += 1;
+        logicalDeviceCreateInfo.score += 1;
     }
 
     // If the physical device is a discrete gpu add 2 the score
     if(physicalDeviceInfo.physicalDeviceProperties.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
-        physicalDeviceCreateInfo.score += 2;
+        logicalDeviceCreateInfo.score += 2;
     }
 
-    return physicalDeviceCreateInfo;
+    return logicalDeviceCreateInfo;
 }
 
-PhysicalDeviceCreateInfo getSuitableVulkanPhysicalDevice(VkInstance instance, VkSurfaceKHR surface, StringSlice deviceExtensions, SurfaceFormatKHRSlice surfaceFormats) {
+LogicalDeviceCreateInfo getSuitableVulkanPhysicalDevice(VkInstance instance, VkSurfaceKHR surface, StringSlice deviceExtensions, SurfaceFormatKHRSlice surfaceFormats) {
     // Get the physical devices array and register its cleanup method
     PhysicalDeviceInfoSlice physicalDeviceInfos = getVulkanPhysicalDeviceInfos(instance, surface);
 
@@ -235,11 +236,11 @@ PhysicalDeviceCreateInfo getSuitableVulkanPhysicalDevice(VkInstance instance, Vk
     }
 
     // Create a handle for our selected physical device and create variables to store the index of our selected queue families and number of images in our swapchain
-    PhysicalDeviceCreateInfo mostSuitablePhysicalDevice = {0};
+    LogicalDeviceCreateInfo mostSuitablePhysicalDevice = {0};
 
     // Iterate through all physical devices and select the best one
     for(uint32_t i = 0; i < physicalDeviceInfos.count; i++) {
-        PhysicalDeviceCreateInfo currentPhysicalDeviceCreateInfo = getVulkanPhysicalDeviceSuitability(physicalDeviceInfos.data[i], deviceExtensions, surfaceFormats);
+        LogicalDeviceCreateInfo currentPhysicalDeviceCreateInfo = getVulkanPhysicalDeviceSuitability(physicalDeviceInfos.data[i], deviceExtensions, surfaceFormats);
         if(currentPhysicalDeviceCreateInfo.score > mostSuitablePhysicalDevice.score) {
             mostSuitablePhysicalDevice = currentPhysicalDeviceCreateInfo;
         }
@@ -287,16 +288,23 @@ PhysicalDeviceInfoSlice getVulkanPhysicalDeviceInfos(VkInstance instance, VkSurf
     return physicalDeviceInfos;
 }
 
-VkDevice createVulkanDevice(PhysicalDeviceCreateInfo physicalDeviceCreateInfo, StringSlice deviceExtensions) {
+LogicalDeviceInfo createVulkanDevice(LogicalDeviceCreateInfo logicalDeviceCreateInfo) {
+    LogicalDeviceInfo logicalDevice = {
+        .physicalDeviceInfo           = logicalDeviceCreateInfo.physicalDeviceInfo,
+        .surfaceFormatIndex           = logicalDeviceCreateInfo.surfaceFormatIndex,
+        .graphicsQueueFamilyIndex     = logicalDeviceCreateInfo.graphicsQueueFamilyIndex,
+        .presentationQueueFamilyIndex = logicalDeviceCreateInfo.presentationQueueFamilyIndex
+    };
+
     fprintf(
         stdout,
         "Creating logical device from physical device:\n    Name:                      %s\n    API Version:               %" PRIu32 ".%" PRIu32 ".%" PRIu32 "\n    Graphics Queue Family:     %" PRIu32 "\n    Presentation Queue Family: %" PRIu32 "\n",
-        physicalDeviceCreateInfo.physicalDeviceInfo.physicalDeviceProperties.properties.deviceName,
-        VK_VERSION_MAJOR(physicalDeviceCreateInfo.physicalDeviceInfo.physicalDeviceProperties.properties.apiVersion),
-        VK_VERSION_MINOR(physicalDeviceCreateInfo.physicalDeviceInfo.physicalDeviceProperties.properties.apiVersion),
-        VK_VERSION_PATCH(physicalDeviceCreateInfo.physicalDeviceInfo.physicalDeviceProperties.properties.apiVersion),
-        physicalDeviceCreateInfo.graphicsQueueFamilyIndex,
-        physicalDeviceCreateInfo.presentationQueueFamilyIndex
+        logicalDeviceCreateInfo.physicalDeviceInfo.physicalDeviceProperties.properties.deviceName,
+        VK_VERSION_MAJOR(logicalDeviceCreateInfo.physicalDeviceInfo.physicalDeviceProperties.properties.apiVersion),
+        VK_VERSION_MINOR(logicalDeviceCreateInfo.physicalDeviceInfo.physicalDeviceProperties.properties.apiVersion),
+        VK_VERSION_PATCH(logicalDeviceCreateInfo.physicalDeviceInfo.physicalDeviceProperties.properties.apiVersion),
+        logicalDeviceCreateInfo.graphicsQueueFamilyIndex,
+        logicalDeviceCreateInfo.presentationQueueFamilyIndex
     );
 
     // Add our the graphics and presentation queue families to an array
@@ -305,14 +313,14 @@ VkDevice createVulkanDevice(PhysicalDeviceCreateInfo physicalDeviceCreateInfo, S
     uint32_t queueFamiliesCount = 0;
     queueFamilies[queueFamiliesCount++] = (VkDeviceQueueCreateInfo){
             .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-            .queueFamilyIndex = physicalDeviceCreateInfo.graphicsQueueFamilyIndex,
+            .queueFamilyIndex = logicalDeviceCreateInfo.graphicsQueueFamilyIndex,
             .queueCount       = 1,
             .pQueuePriorities = &queuePriority,
         };
-    if(physicalDeviceCreateInfo.graphicsQueueFamilyIndex != physicalDeviceCreateInfo.presentationQueueFamilyIndex) {
+    if(logicalDeviceCreateInfo.graphicsQueueFamilyIndex != logicalDeviceCreateInfo.presentationQueueFamilyIndex) {
         queueFamilies[queueFamiliesCount++] = (VkDeviceQueueCreateInfo){
             .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-            .queueFamilyIndex = physicalDeviceCreateInfo.presentationQueueFamilyIndex,
+            .queueFamilyIndex = logicalDeviceCreateInfo.presentationQueueFamilyIndex,
             .queueCount       = 1,
             .pQueuePriorities = &queuePriority,
         };
@@ -348,13 +356,12 @@ VkDevice createVulkanDevice(PhysicalDeviceCreateInfo physicalDeviceCreateInfo, S
         .pNext = &enabledDeviceFeatures,
         .queueCreateInfoCount = queueFamiliesCount,
         .pQueueCreateInfos = queueFamilies,
-        .enabledExtensionCount = deviceExtensions.count,
-        .ppEnabledExtensionNames = deviceExtensions.data
+        .enabledExtensionCount = logicalDeviceCreateInfo.deviceExtensions.count,
+        .ppEnabledExtensionNames = logicalDeviceCreateInfo.deviceExtensions.data
     };
 
     // Create the logical device
-    VkDevice device = VK_NULL_HANDLE;
-    VkResult result = vkCreateDevice(physicalDeviceCreateInfo.physicalDeviceInfo.physicalDevice, &deviceInfo, NULL, &device);
+    VkResult result = vkCreateDevice(logicalDeviceCreateInfo.physicalDeviceInfo.physicalDevice, &deviceInfo, NULL, &logicalDevice.logicalDevice);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to create logical device: %i\n", result);
         exit(EXIT_FAILURE);
@@ -362,9 +369,13 @@ VkDevice createVulkanDevice(PhysicalDeviceCreateInfo physicalDeviceCreateInfo, S
     fprintf(stdout, "Created logical device\n");
 
     // Load device level vulkan functions
-    volkLoadDevice(device);
+    volkLoadDevice(logicalDevice.logicalDevice);
     fprintf(stdout, "Loaded device level vulkan functions using volk\n");
 
+    // Get the the handles to the graphics and presentation queues
+    vkGetDeviceQueue(logicalDevice.logicalDevice, logicalDevice.graphicsQueueFamilyIndex, 0, &logicalDevice.graphicsQueue);
+    vkGetDeviceQueue(logicalDevice.logicalDevice, logicalDevice.presentationQueueFamilyIndex, 0, &logicalDevice.presentationQueue);
+
     // Return the logical device
-    return device;
+    return logicalDevice;
 }

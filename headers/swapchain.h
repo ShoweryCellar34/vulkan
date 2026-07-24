@@ -11,7 +11,7 @@
 #include <macros.h>
 
 typedef struct {
-    PhysicalDeviceCreateInfo physicalDeviceCreateInfo;
+    LogicalDeviceCreateInfo physicalDeviceCreateInfo;
 
     VkSwapchainKHR swapchain;
     VkExtent2D     swapchainExtent;

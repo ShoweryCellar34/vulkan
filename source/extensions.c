@@ -73,7 +73,7 @@ StringSlice getVulkanExtensions(bool debug) {
     };
 }
 
-ExtensionPropertiesSlice getSupportedVulkanExtensions() {
+ExtensionPropertiesSlice getSupportedVulkanExtensions(void) {
     // Get the length of the supported extensions array
     ExtensionPropertiesSlice supportedExtensions = {0};
     VkResult result = vkEnumerateInstanceExtensionProperties(NULL, &supportedExtensions.count, NULL);
@@ -105,7 +105,7 @@ ExtensionPropertiesSlice getSupportedVulkanExtensions() {
     return supportedExtensions;
 }
 
-StringSlice getVulkanDeviceExtensions() {
+StringSlice getVulkanDeviceExtensions(void) {
     static const char* extensionNames[] = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME
     };

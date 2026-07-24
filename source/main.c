@@ -6,7 +6,7 @@
 
 // Library Headers
 #include <volk.h>
-#include <vk_mem_alloc.h>
+// #include <vk_mem_alloc.h>
 #include <GLFW/glfw3.h>
 
 // Project Headers
@@ -19,12 +19,13 @@
 #include <window.h>
 
 DEFINE_CALLBACK_ARGS_0(glfwTerminate)
+DEFINE_CALLBACK_ARGS_1(glfwDestroyWindow, GLFWwindow*)
 DEFINE_CALLBACK_ARGS_0(volkFinalize)
 DEFINE_CALLBACK_ARGS_2(vkDestroyInstance, VkInstance, const VkAllocationCallbacks*)
 DEFINE_CALLBACK_ARGS_3(vkDestroyDebugUtilsMessengerEXT, VkInstance, VkDebugUtilsMessengerEXT, const VkAllocationCallbacks*)
 DEFINE_CALLBACK_ARGS_3(vkDestroySurfaceKHR, VkInstance, VkSurfaceKHR, const VkAllocationCallbacks*)
 DEFINE_CALLBACK_ARGS_2(vkDestroyDevice, VkDevice, const VkAllocationCallbacks*)
-DEFINE_CALLBACK_ARGS_1(vmaDestroyAllocator, VmaAllocator)
+// DEFINE_CALLBACK_ARGS_1(vmaDestroyAllocator, VmaAllocator)
 DEFINE_CALLBACK_ARGS_3(vkDestroySwapchainKHR, VkDevice, VkSwapchainKHR, const VkAllocationCallbacks*)
 DEFINE_CALLBACK_ARGS_3(vkDestroyImageView, VkDevice, VkImageView, const VkAllocationCallbacks*)
 DEFINE_CALLBACK_ARGS_1(fclose, FILE*)
@@ -45,12 +46,12 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(
     const VkDebugUtilsMessengerCallbackDataEXT* data,
     void*                                       user_data
 ) {
-    severity; type; user_data;
+    (void)severity; (void)type; (void)user_data;
     fprintf(stderr, "Vulkan error: %s\n", data->pMessage);
     return VK_FALSE;
 }
 
-void transitionImageLayout(
+static void transitionImageLayout(
     VkCommandBuffer         commandBuffer,
     VkImage                 image,
     VkImageLayout           oldLayout,
@@ -87,7 +88,7 @@ void transitionImageLayout(
     vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
 }
 
-VkInstance createVulkanInstance(const char* name, uint32_t version, StringSlice extensions, StringSlice layers, bool debug, VkDebugUtilsMessengerEXT* debugMessenger) {
+static VkInstance createVulkanInstance(const char* name, uint32_t version, StringSlice extensions, StringSlice layers, bool debug, VkDebugUtilsMessengerEXT* debugMessenger) {
     // Create a struct containing the settings for the debug messenger
     VkDebugUtilsMessengerCreateInfoEXT debugInfo = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
@@ -179,7 +180,7 @@ int main(int argc, char* argv[]) {
 
     // Create the GLFW window
     GLFWwindow* window = createGLFWWindow(PROJECT_NAME, WINDOW_WIDTH, WINDOW_HEIGHT);
-    pushCleanupCallback(glfwDestroyWindow, window);
+    PUSH_CLEANUP_ARGS_1(glfwDestroyWindow, window);
 
     // Create a variable to store the result of vulkan functions for error checking and reporting
     VkResult result = VK_SUCCESS;
@@ -221,11 +222,13 @@ int main(int argc, char* argv[]) {
     }
 
     // Get the most suitable physical device
-    PhysicalDeviceCreateInfo physicalDeviceCreateInfo = getSuitableVulkanPhysicalDevice(instance, surface, deviceExtensions, (SurfaceFormatKHRSlice){
+    LogicalDeviceCreateInfo physicalDeviceCreateInfo = getSuitableVulkanPhysicalDevice(instance, surface, deviceExtensions, (SurfaceFormatKHRSlice){
         .count = 1,
         .data = (VkSurfaceFormatKHR[]){
-            VK_FORMAT_B8G8R8A8_SRGB,
-            VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+            (VkSurfaceFormatKHR){
+                .format     = VK_FORMAT_B8G8R8A8_SRGB,
+                .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+            }
         }
     });
 
@@ -236,44 +239,35 @@ int main(int argc, char* argv[]) {
     }
 
     // Create the logical device
-    VkDevice device = createVulkanDevice(physicalDeviceCreateInfo, deviceExtensions);
-    PUSH_CLEANUP_ARGS_2(vkDestroyDevice, device, NULL);
+    LogicalDeviceInfo device = createVulkanDevice(physicalDeviceCreateInfo);
+    PUSH_CLEANUP_ARGS_2(vkDestroyDevice, device.logicalDevice, NULL);
 
-    // Load device level vulkan functions
-    volkLoadDevice(device);
+    // // Create a struct containing the settings for the VMA allocator
+    // VmaAllocatorCreateInfo allocatorCreateInfo = {
+    //     .physicalDevice = physicalDeviceCreateInfo.physicalDeviceInfo.physicalDevice,
+    //     .device = device.logicalDevice,
+    //     .instance = instance,
+    //     .vulkanApiVersion = VK_API_VERSION_1_4
+    // };
 
-    // Get the the handles to the graphics and presentation queues
-    VkQueue graphicsQueue = VK_NULL_HANDLE;
-    VkQueue presentationQueue = VK_NULL_HANDLE;
-    vkGetDeviceQueue(device, physicalDeviceCreateInfo.graphicsQueueFamilyIndex, 0, &graphicsQueue);
-    vkGetDeviceQueue(device, physicalDeviceCreateInfo.presentationQueueFamilyIndex, 0, &presentationQueue);
+    // // Get the list of vulkan functions for VMA from volk
+    // VmaVulkanFunctions vulkanFunctions;
+    // result = vmaImportVulkanFunctionsFromVolk(&allocatorCreateInfo, &vulkanFunctions);
+    // if(result != VK_SUCCESS) {
+    //     fprintf(stderr, "Failed to import vulkan functions from volk for VMA: %i\n", result);
+    //     return EXIT_FAILURE;
+    // }
+    // allocatorCreateInfo.pVulkanFunctions = &vulkanFunctions;
 
-    // Create a struct containing the settings for the VMA allocator
-    VmaAllocatorCreateInfo allocatorCreateInfo = {
-        .physicalDevice = physicalDeviceCreateInfo.physicalDeviceInfo.physicalDevice,
-        .device = device,
-        .instance = instance,
-        .vulkanApiVersion = VK_API_VERSION_1_4
-    };
-
-    // Get the list of vulkan functions for VMA from volk
-    VmaVulkanFunctions vulkanFunctions;
-    result = vmaImportVulkanFunctionsFromVolk(&allocatorCreateInfo, &vulkanFunctions);
-    if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to import vulkan functions from volk for VMA: %i\n", result);
-        return EXIT_FAILURE;
-    }
-    allocatorCreateInfo.pVulkanFunctions = &vulkanFunctions;
-
-    // Create the VMA allocator
-    VmaAllocator allocator;
-    result = vmaCreateAllocator(&allocatorCreateInfo, &allocator);
-    if(result != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create the VMA allocator: %i\n", result);
-        return EXIT_FAILURE;
-    }
-    PUSH_CLEANUP_ARGS_1(vmaDestroyAllocator, allocator);
-    fprintf(stdout, "Created the VMA allocator\n");
+    // // Create the VMA allocator
+    // VmaAllocator allocator;
+    // result = vmaCreateAllocator(&allocatorCreateInfo, &allocator);
+    // if(result != VK_SUCCESS) {
+    //     fprintf(stderr, "Failed to create the VMA allocator: %i\n", result);
+    //     return EXIT_FAILURE;
+    // }
+    // PUSH_CLEANUP_ARGS_1(vmaDestroyAllocator, allocator);
+    // fprintf(stdout, "Created the VMA allocator\n");
 
     // Set the number of images that should be in the swapchain
     uint32_t swapchainImageCount = physicalDeviceCreateInfo.physicalDeviceInfo.surfaceCapabilities.minImageCount + (physicalDeviceCreateInfo.physicalDeviceInfo.surfaceCapabilities.maxImageCount > physicalDeviceCreateInfo.physicalDeviceInfo.surfaceCapabilities.minImageCount || physicalDeviceCreateInfo.physicalDeviceInfo.surfaceCapabilities.maxImageCount == 0 ? 1 : 0);
@@ -319,17 +313,17 @@ int main(int argc, char* argv[]) {
 
     // Create the swapchain
     VkSwapchainKHR swapchain = VK_NULL_HANDLE;
-    result = vkCreateSwapchainKHR(device, &swapchainCreateInfo, NULL, &swapchain);
+    result = vkCreateSwapchainKHR(device.logicalDevice, &swapchainCreateInfo, NULL, &swapchain);
     if(result != VK_SUCCESS) {
         fprintf(stdout, "Failed to create swapchain: %i\n", result);
         exit(EXIT_FAILURE);
     }
-    PUSH_CLEANUP_ARGS_3(vkDestroySwapchainKHR, device, swapchain, NULL);
+    PUSH_CLEANUP_ARGS_3(vkDestroySwapchainKHR, device.logicalDevice, swapchain, NULL);
     fprintf(stdout, "Created swapchain\n");
 
     // Get the length of the swapchain images array
     uint32_t swapchainImagesCount = 0;
-    result = vkGetSwapchainImagesKHR(device, swapchain, &swapchainImagesCount, NULL);
+    result = vkGetSwapchainImagesKHR(device.logicalDevice, swapchain, &swapchainImagesCount, NULL);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to get number of swapchain images: %i\n", result);
         exit(EXIT_FAILURE);
@@ -344,7 +338,7 @@ int main(int argc, char* argv[]) {
     pushCleanupCallback(free, swapchainImages);
 
     // Fill the swapchain images array with the list of swapchain images
-    result = vkGetSwapchainImagesKHR(device, swapchain, &swapchainImagesCount, swapchainImages);
+    result = vkGetSwapchainImagesKHR(device.logicalDevice, swapchain, &swapchainImagesCount, swapchainImages);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to get number of swapchain images: %i\n", result);
         exit(EXIT_FAILURE);
@@ -379,12 +373,12 @@ int main(int argc, char* argv[]) {
     // Create the swapchain image views
     for(uint32_t i = 0; i < swapchainImagesCount; i++) {
         swapchainImageViewsCreateInfo.image = swapchainImages[i];
-        result = vkCreateImageView(device, &swapchainImageViewsCreateInfo, NULL, &swapchainImageViews[i]);
+        result = vkCreateImageView(device.logicalDevice, &swapchainImageViewsCreateInfo, NULL, &swapchainImageViews[i]);
         if(result != VK_SUCCESS) {
             fprintf(stderr, "Failed to create swapchain image view %" PRIu32 ": %i\n", i, result);
             exit(EXIT_FAILURE);
         }
-        PUSH_CLEANUP_ARGS_3(vkDestroyImageView, device, swapchainImageViews[i], NULL);
+        PUSH_CLEANUP_ARGS_3(vkDestroyImageView, device.logicalDevice, swapchainImageViews[i], NULL);
         fprintf(stderr, "Created swapchain image view %" PRIu32 "\n", i);
     }
 
@@ -404,7 +398,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Get the length of the supported extensions array
-    long shaderFileDataCount = ftell(shaderFile);
+    size_t shaderFileDataCount = (size_t)ftell(shaderFile);
     if(shaderFileDataCount < 0) {
         fprintf(stderr, "Failed to get length of file: %s\n", "resources/shaders/basic.spv");
         return EXIT_FAILURE;
@@ -447,17 +441,17 @@ int main(int argc, char* argv[]) {
     VkShaderModuleCreateInfo shaderModuleCreateInfo = {
         .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = (size_t)shaderFileDataCount,
-        .pCode    = (uint32_t*)shaderFileData
+        .pCode    = (uint32_t*)(void*)shaderFileData
     };
 
     // Create the shader module
     VkShaderModule shaderModule = VK_NULL_HANDLE;
-    result = vkCreateShaderModule(device, &shaderModuleCreateInfo, NULL, &shaderModule);
+    result = vkCreateShaderModule(device.logicalDevice, &shaderModuleCreateInfo, NULL, &shaderModule);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to create shader module: %i\n", result);
         exit(EXIT_FAILURE);
     }
-    PUSH_CLEANUP_ARGS_3(vkDestroyShaderModule, device, shaderModule, NULL);
+    PUSH_CLEANUP_ARGS_3(vkDestroyShaderModule, device.logicalDevice, shaderModule, NULL);
     fprintf(stdout, "Created shader module\n");
 
     VkPipelineShaderStageCreateInfo shaderStages[] = {
@@ -535,12 +529,12 @@ int main(int argc, char* argv[]) {
     };
 
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
-    result = vkCreatePipelineLayout(device, &pipelineLayoutInfo, NULL, &pipelineLayout);
+    result = vkCreatePipelineLayout(device.logicalDevice, &pipelineLayoutInfo, NULL, &pipelineLayout);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to create graphics pipeline layout: %i\n", result);
         exit(EXIT_FAILURE);
     }
-    PUSH_CLEANUP_ARGS_3(vkDestroyPipelineLayout, device, pipelineLayout, NULL);
+    PUSH_CLEANUP_ARGS_3(vkDestroyPipelineLayout, device.logicalDevice, pipelineLayout, NULL);
     fprintf(stdout, "Created graphics pipeline layout\n");
 
     VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo = {
@@ -566,12 +560,12 @@ int main(int argc, char* argv[]) {
     };
 
     VkPipeline pipeline = VK_NULL_HANDLE;
-    result = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineCreateInfo, NULL, &pipeline);
+    result = vkCreateGraphicsPipelines(device.logicalDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, NULL, &pipeline);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to create graphics pipeline: %i\n", result);
         exit(EXIT_FAILURE);
     }
-    PUSH_CLEANUP_ARGS_3(vkDestroyPipeline, device, pipeline, NULL);
+    PUSH_CLEANUP_ARGS_3(vkDestroyPipeline, device.logicalDevice, pipeline, NULL);
     fprintf(stdout, "Created graphics pipeline\n");
 
     VkCommandPoolCreateInfo commandPoolCreateInfo = {
@@ -582,21 +576,21 @@ int main(int argc, char* argv[]) {
 
     VkCommandPool graphicsCommandPool = VK_NULL_HANDLE;
     VkCommandPool presentationCommandPool = VK_NULL_HANDLE;
-    result = vkCreateCommandPool(device, &commandPoolCreateInfo, NULL, &graphicsCommandPool);
+    result = vkCreateCommandPool(device.logicalDevice, &commandPoolCreateInfo, NULL, &graphicsCommandPool);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to create graphics command pool: %i\n", result);
         exit(EXIT_FAILURE);
     }
-    PUSH_CLEANUP_ARGS_3(vkDestroyCommandPool, device, graphicsCommandPool, NULL);
+    PUSH_CLEANUP_ARGS_3(vkDestroyCommandPool, device.logicalDevice, graphicsCommandPool, NULL);
     fprintf(stdout, "Created graphics command pool\n");
 
     if(physicalDeviceCreateInfo.graphicsQueueFamilyIndex != physicalDeviceCreateInfo.presentationQueueFamilyIndex) {
-        result = vkCreateCommandPool(device, &commandPoolCreateInfo, NULL, &presentationCommandPool);
+        result = vkCreateCommandPool(device.logicalDevice, &commandPoolCreateInfo, NULL, &presentationCommandPool);
         if(result != VK_SUCCESS) {
             fprintf(stderr, "Failed to create presentation command pool: %i\n", result);
             exit(EXIT_FAILURE);
         }
-        PUSH_CLEANUP_ARGS_3(vkDestroyCommandPool, device, presentationCommandPool, NULL);
+        PUSH_CLEANUP_ARGS_3(vkDestroyCommandPool, device.logicalDevice, presentationCommandPool, NULL);
         fprintf(stdout, "Created presentation command pool\n");
     } else {
         presentationCommandPool = graphicsCommandPool;
@@ -612,7 +606,7 @@ int main(int argc, char* argv[]) {
 
     VkCommandBuffer graphicsCommandBuffers[MAX_FRAMES_IN_FLIGHT]     = {VK_NULL_HANDLE};
     VkCommandBuffer presentationCommandBuffers[MAX_FRAMES_IN_FLIGHT] = {VK_NULL_HANDLE};
-    result = vkAllocateCommandBuffers(device, &commandBufferAllocationInfo, graphicsCommandBuffers);
+    result = vkAllocateCommandBuffers(device.logicalDevice, &commandBufferAllocationInfo, graphicsCommandBuffers);
     if(result != VK_SUCCESS) {
         fprintf(stderr, "Failed to allocate %i graphics command buffer(s): %i\n", MAX_FRAMES_IN_FLIGHT, result);
         exit(EXIT_FAILURE);
@@ -621,7 +615,7 @@ int main(int argc, char* argv[]) {
 
     if(physicalDeviceCreateInfo.graphicsQueueFamilyIndex != physicalDeviceCreateInfo.presentationQueueFamilyIndex) {
         commandBufferAllocationInfo.commandPool = presentationCommandPool;
-        result = vkAllocateCommandBuffers(device, &commandBufferAllocationInfo, presentationCommandBuffers);
+        result = vkAllocateCommandBuffers(device.logicalDevice, &commandBufferAllocationInfo, presentationCommandBuffers);
         if(result != VK_SUCCESS) {
             fprintf(stderr, "Failed to allocate %i presentation command buffer(s): %i\n", MAX_FRAMES_IN_FLIGHT, result);
             exit(EXIT_FAILURE);
@@ -646,19 +640,19 @@ int main(int argc, char* argv[]) {
     VkFence      drawFences[MAX_FRAMES_IN_FLIGHT]                = {VK_NULL_HANDLE};
 
     for(uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        result = vkCreateSemaphore(device, &semaphoreCreateInfo, NULL, &presentCompleteSemaphores[i]);
+        result = vkCreateSemaphore(device.logicalDevice, &semaphoreCreateInfo, NULL, &presentCompleteSemaphores[i]);
         if(result != VK_SUCCESS) {
             fprintf(stderr, "Failed to create presentation semaphore %" PRIu32 ": %i\n", i, result);
             exit(EXIT_FAILURE);
         }
-        PUSH_CLEANUP_ARGS_3(vkDestroySemaphore, device, presentCompleteSemaphores[i], NULL);
+        PUSH_CLEANUP_ARGS_3(vkDestroySemaphore, device.logicalDevice, presentCompleteSemaphores[i], NULL);
 
-        result = vkCreateFence(device, &fenceCreateInfo, NULL, &drawFences[i]);
+        result = vkCreateFence(device.logicalDevice, &fenceCreateInfo, NULL, &drawFences[i]);
         if(result != VK_SUCCESS) {
             fprintf(stderr, "Failed to create draw fence %" PRIu32 ": %i\n", i, result);
             exit(EXIT_FAILURE);
         }
-        PUSH_CLEANUP_ARGS_3(vkDestroyFence, device, drawFences[i], NULL);
+        PUSH_CLEANUP_ARGS_3(vkDestroyFence, device.logicalDevice, drawFences[i], NULL);
     }
 
     VkSemaphore* renderFinishedSemaphores = malloc(sizeof(VkSemaphore) * swapchainImagesCount);
@@ -668,12 +662,12 @@ int main(int argc, char* argv[]) {
     }
     pushCleanupCallback(free, renderFinishedSemaphores);
     for(uint32_t i = 0; i < swapchainImagesCount; i++) {
-        result = vkCreateSemaphore(device, &semaphoreCreateInfo, NULL, &renderFinishedSemaphores[i]);
+        result = vkCreateSemaphore(device.logicalDevice, &semaphoreCreateInfo, NULL, &renderFinishedSemaphores[i]);
         if(result != VK_SUCCESS) {
             fprintf(stderr, "Failed to create render semaphore %" PRIu32 ": %i\n", i, result);
             exit(EXIT_FAILURE);
         }
-        PUSH_CLEANUP_ARGS_3(vkDestroySemaphore, device, renderFinishedSemaphores[i], NULL);
+        PUSH_CLEANUP_ARGS_3(vkDestroySemaphore, device.logicalDevice, renderFinishedSemaphores[i], NULL);
     }
 
     fprintf(stdout, "Created essential semaphores/fences\n");
@@ -687,12 +681,12 @@ int main(int argc, char* argv[]) {
         glfwPollEvents();
 
         // Wait for previous frame to finish drawing
-        result = vkWaitForFences(device, 1, &drawFences[frameIndex], VK_TRUE, UINT64_MAX);
+        result = vkWaitForFences(device.logicalDevice, 1, &drawFences[frameIndex], VK_TRUE, UINT64_MAX);
         if(result != VK_SUCCESS) {
             fprintf(stderr, "Failed to wait for drawing fence %" PRIu32 ": %i\n", frameIndex, result);
             exit(EXIT_FAILURE);
         }
-        result = vkResetFences(device, 1, &drawFences[frameIndex]);
+        result = vkResetFences(device.logicalDevice, 1, &drawFences[frameIndex]);
         if(result != VK_SUCCESS) {
             fprintf(stderr, "Failed to reset drawing fence %" PRIu32 ": %i\n", frameIndex, result);
             exit(EXIT_FAILURE);
@@ -707,7 +701,7 @@ int main(int argc, char* argv[]) {
         };
 
         uint32_t swapchainIndex = 0;
-        result = vkAcquireNextImage2KHR(device, &swapchainNextImageAcquisitionInfo, &swapchainIndex);
+        result = vkAcquireNextImage2KHR(device.logicalDevice, &swapchainNextImageAcquisitionInfo, &swapchainIndex);
         if(result != VK_SUCCESS) {
             fprintf(stderr, "Failed to acquire next swapchain image: %i\n", result);
             exit(EXIT_FAILURE);
@@ -734,7 +728,7 @@ int main(int argc, char* argv[]) {
         );
 
         VkClearValue clearColor = {
-            .color = {
+            .color.float32 = {
                 0.0f,
                 0.0f,
                 0.0f,
@@ -820,9 +814,9 @@ int main(int argc, char* argv[]) {
             .pSignalSemaphores    = &renderFinishedSemaphores[swapchainIndex]
         };
 
-        vkQueueWaitIdle(presentationQueue);
+        vkQueueWaitIdle(device.presentationQueue);
 
-        result = vkQueueSubmit(graphicsQueue, 1, &submitInfo, drawFences[frameIndex]);
+        result = vkQueueSubmit(device.graphicsQueue, 1, &submitInfo, drawFences[frameIndex]);
         if(result != VK_SUCCESS) {
             fprintf(stderr, "Failed to submit graphics command buffer queue: %i\n", result);
             exit(EXIT_FAILURE);
@@ -839,10 +833,10 @@ int main(int argc, char* argv[]) {
             .pImageIndices      = &swapchainIndex
         };
 
-        result = vkQueuePresentKHR(presentationQueue, &presentInfo);
+        result = vkQueuePresentKHR(device.presentationQueue, &presentInfo);
     }
 
-    vkDeviceWaitIdle(device);
+    vkDeviceWaitIdle(device.logicalDevice);
 
     // Exit with success, the cleanup stack will clean everything up
     return EXIT_SUCCESS;

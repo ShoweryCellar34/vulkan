@@ -1,0 +1,157 @@
+cmake_minimum_required(VERSION 3.20)
+project(vulkanTestApp LANGUAGES C VERSION 0.0.1)
+
+set(CMAKE_C_STANDARD          11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS        OFF)
+
+# Export the compiler commands for LSP programs
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Set debug build type if no build type is set 
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
+endif()
+
+# Set build variant compile and link options
+add_compile_options(
+    "$<$<CONFIG:Debug>:-O0;-g3;-fno-omit-frame-pointer;-fsanitize=address,undefined;--coverage>"
+    "$<$<CONFIG:Release>:-O3;-DNDEBUG>"
+    "$<$<CONFIG:RelWithDebInfo>:-O2;-g;-DNDEBUG>"
+    "$<$<CONFIG:MinSizeRel>:-Os;-DNDEBUG>"
+)
+add_link_options(
+    "$<$<CONFIG:Debug>:-fsanitize=address,undefined;--coverage>"
+)
+
+# Check if Inter Procedural Optimization is supported
+include(CheckIPOSupported)
+check_ipo_supported()
+
+# Ensure necessary tooling is present
+find_program(CCACHE_PROGRAM     ccache               REQUIRED)
+find_program(CLANG_TIDY_PROGRAM clang-tidy           REQUIRED)
+find_program(IWYU_PROGRAM       include-what-you-use REQUIRED)
+find_program(CPPCHECK_PROGRAM   cppcheck             REQUIRED)
+find_program(LCOV_PROGRAM       lcov                 REQUIRED)
+find_program(GENHTML_PROGRAM    genhtml              REQUIRED)
+find_package(                   Doxygen              REQUIRED)
+
+# Try to find the slang shader compiler
+find_program(SLANG_COMPILER     slangc               REQUIRED)
+
+# Enable caching of unchanged objects during building
+set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+
+# Get dependencies
+include(FetchContent)
+
+# Define a dependency helper function
+function(fetch_dependency dependencyName gitRepo gitTag)
+    FetchContent_Declare(${dependencyName}
+        GIT_REPOSITORY ${gitRepo}
+        GIT_TAG        ${gitTag}
+        # GIT_SHALLOW    TRUE
+    )
+    FetchContent_MakeAvailable(${dependencyName})
+endfunction()
+
+# Configure options for dependencies
+set(GLFW_BUILD_DOCS     OFF      CACHE BOOL   "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF      CACHE BOOL   "" FORCE)
+set(GLFW_BUILD_TESTS    OFF      CACHE BOOL   "" FORCE)
+set(GLFW_INSTALL        OFF      CACHE BOOL   "" FORCE)
+set(GLFW_LIBRARY_TYPE   "STATIC" CACHE STRING "" FORCE)
+# set(USE_MSVC_RUNTIME_LIBRARY_DLL OFF CACHE BOOL "" FORCE)
+
+set(CGLM_SHARED  OFF CACHE BOOL "" FORCE)
+set(CGLM_STATIC  ON  CACHE BOOL "" FORCE)
+set(CGLM_USE_C99 OFF CACHE BOOL "" FORCE)
+set(CGLM_TEST    OFF CACHE BOOL "" FORCE)
+
+# Declare dependencies
+fetch_dependency(volk https://github.com/zeux/volk.git                                      47cddf7ed97b94118a08aacb548a411188e016cc)
+# fetch_dependency(vma  https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git 3aa921224c154a0d2c43912bc88e1c42ce1f7607)
+fetch_dependency(glfw https://github.com/glfw/glfw.git                                      b00e6a8a88ad1b60c0a045e696301deb92c9a13e)
+fetch_dependency(cglm https://github.com/recp/cglm.git                                      83d5b2c97378e61a4666825fd3a5548955c83add)
+fetch_dependency(stb  https://github.com/nothings/stb.git                                   31c1ad37456438565541f4919958214b6e762fb4)
+
+# Set target name
+set(TARGET_NAME "vulkanTest")
+
+# Create target
+add_executable(${TARGET_NAME}
+    source/cleanup.c
+    source/devices.c
+    source/extensions.c
+    source/layers.c
+    source/main.c
+    source/swapchain.c
+    source/window.c
+    # stb.c
+)
+
+# Set target include directories
+target_include_directories(${TARGET_NAME} PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/headers>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>
+    ${stb_SOURCE_DIR}
+)
+
+# Set target link libraries
+target_link_libraries(${TARGET_NAME} PRIVATE volk #[[ VulkanMemoryAllocator VulkanMemoryAllocatorImplementation ]] glfw cglm)
+
+target_compile_definitions(${TARGET_NAME} PRIVATE DEBUG_BUILD=$<CONFIG:Debug>)
+
+# Generate configure file for target
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/headers/projectData.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/projectData.h"
+)
+
+# Enable IPO for target
+set_property(TARGET ${TARGET_NAME} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+
+# Enable all warnings and treat them as errors
+target_compile_options(${TARGET_NAME} PRIVATE
+    -Wall -Wextra -Wpedantic -Werror
+    -Wshadow -Wconversion -Wsign-conversion
+    -Wcast-align -Wnull-dereference -Wdouble-promotion
+    -Wformat=2 -Wstrict-prototypes -Wmissing-prototypes
+)
+set_target_properties(${TARGET_NAME} PROPERTIES
+    # C_CLANG_TIDY           "${CLANG_TIDY_PROGRAM}"
+    C_INCLUDE_WHAT_YOU_USE "${IWYU_PROGRAM}"
+)
+
+# Copy new resources and compile shaders
+add_custom_command(
+    TARGET  ${TARGET_NAME}    POST_BUILD
+
+    COMMAND ${CMAKE_COMMAND}  -E echo "Removing old resources from build folder"
+    COMMAND ${CMAKE_COMMAND}  -E remove_directory "$<TARGET_FILE_DIR:${TARGET_NAME}>/resources"
+
+    COMMAND ${CMAKE_COMMAND}  -E echo "Copying new resources to build folder"
+    COMMAND ${CMAKE_COMMAND}  -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/resources/assets" "$<TARGET_FILE_DIR:${TARGET_NAME}>/resources/assets"
+
+    COMMAND ${CMAKE_COMMAND}  -E echo "Compiling shaders to build folder"
+    COMMAND ${CMAKE_COMMAND}  -E make_directory "$<TARGET_FILE_DIR:${TARGET_NAME}>/resources/shaders"
+    COMMAND ${SLANG_COMPILER} ${CMAKE_CURRENT_SOURCE_DIR}/resources/shaders/basic.slang -profile spirv_1_6 -fvk-use-entrypoint-name -entry vertMain -entry fragMain -o $<TARGET_FILE_DIR:${TARGET_NAME}>/resources/shaders/basic.spv
+)
+
+# Create the spell check target
+add_custom_target(cppcheck
+    COMMAND           ${CPPCHECK_PROGRAM} --enable=all --std=c11 --project=${CMAKE_BINARY_DIR}/compile_commands.json
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+# Create the coverage target
+add_custom_target(coverage
+    COMMAND           ${LCOV_PROGRAM} --capture --directory . --output-file coverage.info
+    COMMAND           ${GENHTML_PROGRAM} coverage.info --output-directory coverage_html
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    COMMENT           "Report: ${CMAKE_BINARY_DIR}/coverage_html/index.html"
+)
+
+# Create the doxygen target
+doxygen_add_docs(docs ${CMAKE_SOURCE_DIR}/src COMMENT "Generating docs")
